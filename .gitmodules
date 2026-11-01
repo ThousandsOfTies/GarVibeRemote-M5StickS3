@@ -1,0 +1,9 @@
+[submodule "sources/gar-tools"]
+	path = sources/gar-tools
+	url = https://github.com/ThousandsOfTies/gar-tools.git
+[submodule "sources/gar-vibe-remote"]
+	path = sources/gar-vibe-remote
+	url = https://github.com/ThousandsOfTies/gar-vibe-remote.git
+[submodule "sources/board-m5sticks3"]
+	path = sources/board-m5sticks3
+	url = https://github.com/ThousandsOfTies/gar-board-m5sticks3.git

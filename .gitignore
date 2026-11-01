@@ -1,0 +1,12 @@
+.cache/
+*.log
+simulation/runtime/
+simulation/ui-runtime/
+artifacts/
+__pycache__/
+*.pyc
+.env*
+node_modules/
+.gar/
+.codex/hooks.json
+firmware/**/.pio/

@@ -1,0 +1,55 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {loadApplication,createHostServer}=require('../simulation/host-server.cjs');
+async function fixture(t){
+ const module=await loadApplication(path.join(__dirname,'../simulation/runtime'));
+ const server=await createHostServer({module,port:0,manualClock:true});
+ t.after(()=>server.close());return server;
+}
+const edge=(c,button,phase)=>c.control({type:'button',button,phase});
+function press(c,button,ms=50){edge(c,button,'down');c.tick(ms);edge(c,button,'up');}
+test('same C++ app: short B changes focus, A answers and receives ACK',async t=>{
+ const {controller:c}=await fixture(t);const initial=c.snapshot().snapshot;
+ press(c,'B');assert.notEqual(c.snapshot().snapshot.choice,initial.choice);
+ press(c,'A');assert.equal(c.snapshot().metrics.syntheticReplies,1);
+ c.tick(600);assert.equal(c.snapshot().metrics.acknowledgements,1);
+ assert.match(c.snapshot().result,/受信・確認/);
+});
+test('long B opens list without cycling choice; short B and A select another session',async t=>{
+ const {controller:c}=await fixture(t);const choice=c.snapshot().snapshot.choice;
+ press(c,'B',750);assert.equal(c.snapshot().snapshot.listOpen,true);
+ assert.equal(c.snapshot().snapshot.choice,choice);
+ press(c,'B');press(c,'A');
+ assert.equal(c.snapshot().snapshot.listOpen,false);
+ assert.equal(c.snapshot().snapshot.sessionId,'notes');
+});
+test('cancelled B press does not move focus or open list',async t=>{
+ const {controller:c}=await fixture(t);const choice=c.snapshot().snapshot.choice;
+ edge(c,'B','down');c.tick(300);edge(c,'B','cancel');c.tick(500);
+ assert.equal(c.snapshot().snapshot.choice,choice);
+ assert.equal(c.snapshot().snapshot.listOpen,false);
+ assert.equal(c.snapshot().metrics.syntheticReplies,0);
+});
+test('scroll advances, disconnect releases app and reconnect restores sessions',async t=>{
+ const {controller:c}=await fixture(t);c.tick(5000);
+ assert.ok(c.snapshot().snapshot.scrollPixels>0);
+ c.control({type:'hardware',connected:false});assert.equal(c.snapshot().snapshot.connected,false);
+ c.control({type:'hardware',connected:true});assert.equal(c.snapshot().snapshot.connected,true);
+ assert.equal(c.snapshot().snapshot.sessions.length,3);
+ assert.throws(()=>edge(c,'C','down'),/Invalid button/);
+ assert.throws(()=>c.control({type:'hardware',transport:'bluetooth-spp'}),/Invalid transport/);
+});
+test('live mode cannot submit native or synthetic answers',async t=>{
+ const {controller:c}=await fixture(t);c.control({type:'mode',mode:'live'});
+ c.control({type:'live',connected:true,sessions:[{type:'state',session:{id:'external',name:'Live'},agent:{status:'waiting'},ui:{id:'q1',state:'waiting',message:'Proceed?',actions:[{id:'yes',label:'YES'}]}}]});
+ press(c,'A');c.tick(1000);assert.equal(c.snapshot().metrics.syntheticReplies,0);
+ assert.match(c.snapshot().result,/閲覧用/);
+});
+test('HTTP serves device component, protects origin and denies private paths',async t=>{
+ const {port}=await fixture(t);const base=`http://127.0.0.1:${port}`;
+ // Runtime HTTP tests use the explicit component root, as does the developer CLI.
+ assert.equal((await fetch(base+'/health')).status,200);
+ assert.equal((await fetch(base+'/product.json')).status,404);
+ assert.equal((await fetch(base+'/api/control',{method:'POST',headers:{Origin:'https://example.com','Content-Type':'application/json'},body:'{}'})).status,403);
+});
