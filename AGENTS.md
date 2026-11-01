@@ -7,7 +7,7 @@ Keep the common C++ DeviceApplication and CompactUi shared with Plus2, not a JS 
 ButtonMapping.h is the same two-key policy for firmware and PC. A confirms, short B cycles,
 long B opens/closes the list. Physical reset is not an application button. No C shortcuts.
 Board pin facts and drivers belong to board-m5sticks3, not this Product.
-BLE remains planned. Do not relabel SPP as BLE. No Wi-Fi, LAN device listeners, hooks changes,
+BLE uses a distinct transport and reusable GATT byte adapters. Keep physical verification separate from PC tests. Do not relabel SPP as BLE. No Wi-Fi, LAN device listeners, hooks changes,
 real relay restart or firmware writes during scaffold/panel work. Synthetic answers are not approvals.
 Preserve original session/question/choice IDs and ACK semantics in any later BLE adapter.
 Commit/push shared changes first, pin the commits here. Never commit generated WASM, tokens,

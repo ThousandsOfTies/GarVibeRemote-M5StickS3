@@ -53,3 +53,17 @@ test('HTTP serves device component, protects origin and denies private paths',as
  assert.equal((await fetch(base+'/product.json')).status,404);
  assert.equal((await fetch(base+'/api/control',{method:'POST',headers:{Origin:'https://example.com','Content-Type':'application/json'},body:'{}'})).status,403);
 });
+test('BLE chunks use a distinct application lease and preserve answer identities',async t=>{
+ const {controller:c}=await fixture(t);
+ c.control({type:'hardware',transport:'bluetooth-ble'});
+ const before=c.snapshot().snapshot;
+ assert.equal(before.activeTransport,'bluetooth-ble');
+ assert.equal(before.bleClient,true);
+ assert.match(before.message,/画面の変更/);
+ press(c,'B');press(c,'A');c.tick(600);
+ assert.equal(c.snapshot().metrics.syntheticReplies,1);
+ assert.equal(c.snapshot().metrics.acknowledgements,1);
+ c.control({type:'hardware',connected:false});assert.equal(c.snapshot().snapshot.activeTransport,'none');
+ c.control({type:'hardware',connected:true});assert.equal(c.snapshot().snapshot.activeTransport,'bluetooth-ble');
+ assert.equal(c.snapshot().metrics.syntheticReplies,1);
+});

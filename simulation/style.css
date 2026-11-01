@@ -13,3 +13,16 @@ gar-connection-status{--gar-status-connected:#446b49;--gar-status-disconnected:#
 footer{grid-column:1/-1;display:flex;justify-content:space-between;gap:20px;font:10px ui-monospace,monospace;letter-spacing:.4px;color:#8a9482}
 @media(max-width:800px){main{padding:30px 20px;grid-template-columns:1fr;gap:18px}h1{font-size:30px}h1 br{display:block}.workbench{padding:20px 16px}.device-space{padding:24px 0}.guide{gap:12px}aside{display:grid;grid-template-columns:1fr 1fr}.card{padding:20px}footer{flex-direction:column;gap:7px}}
 @media(max-width:500px){aside{grid-template-columns:1fr}.bench-top{font-size:9px}.guide{gap:9px}.guide span{font-size:9px}gar-sticks3{--stick-width:260px}.note{font-size:10px}}
+
+/* Keep the daily panel focused on the physical device. Test tools are optional. */
+main{max-width:680px;display:flex;flex-direction:column;gap:18px;padding:30px 24px 22px}
+header{margin:0}h1{font-size:25px}header p{font-size:12px;margin-top:5px}
+.workbench{min-height:0;padding:20px;background:#e6eadf}
+.device-space{padding:20px 0 24px}
+gar-sticks3{--stick-width:230px}
+.guide{gap:15px}.workbench>.note{margin-top:12px}
+.developer{font-size:12px;color:#71806a}.developer>summary{cursor:pointer;padding:10px 0}
+.developer[open]>summary{margin-bottom:12px}
+.developer aside{display:flex;flex-direction:column;gap:14px}
+.card{padding:20px}.diagnostics{margin-top:16px}footer{font-size:10px}
+@media(max-width:500px){main{padding:22px 14px}.workbench{padding:16px 12px}gar-sticks3{--stick-width:215px}.guide{gap:8px}}

@@ -3,12 +3,12 @@ const longQuestion = '画面の変更とテストが完了しました。修正�
 const yesNo = [{id:'yes',label:'YES'}, {id:'no',label:'NO'}];
 const choices = [{id:'continue',label:'続ける'}, {id:'revise',label:'修正する'}, {id:'stop',label:'中止する'}];
 const scenarioNames = new Set(['multi','long','short','choices','running','idle','done','failed']);
-const links = {'usb-serial':1};
+const links = {'usb-serial':1,'bluetooth-ble':3};
 
 function createSimulationController(module, options={}) {
   let now=0, serial=0, lastPing=0, mode='demo', scenarioName='multi', transport='usb-serial';
   let powered=true, connected=true, reject=false, battery=82, liveConnected=false;
-  let result='まだ回答していません', powerDownAt=null, powerWasOn=false;
+  let result='まだ回答していません';
   const states=new Map(), receipts=new Map(), events=[];
   const metrics={incomingPackets:0,outgoingPackets:0,syntheticReplies:0,acknowledgements:0,droppedReplies:0};
   const read=name=>{const ptr=module[`_gar_app_${name}`]();const value=module.UTF8ToString(ptr);return value?JSON.parse(value):null;};
@@ -19,8 +19,11 @@ function createSimulationController(module, options={}) {
     const pointer=module._malloc(Math.max(1,encoded.length));
     if(!pointer)throw Error('Application receive buffer could not be allocated');
     try {
-      module.HEAPU8.set(encoded,pointer);
-      module._gar_app_feed_bytes(links[link],pointer,encoded.length);
+      const chunkSize=link==='bluetooth-ble'?20:encoded.length;
+      for(let offset=0;offset<encoded.length;offset+=chunkSize){
+        const chunk=encoded.subarray(offset,offset+chunkSize);module.HEAPU8.set(chunk,pointer);
+        module._gar_app_feed_bytes(links[link],pointer,chunk.length);
+      }
     } finally {module._free(pointer);}
   }
   function send(packet, link=transport) {
@@ -30,6 +33,7 @@ function createSimulationController(module, options={}) {
   }
   function hardware() {
     module._gar_app_hardware(+powered,battery,0,0);
+    module._gar_app_ble_hardware(1,+(transport==='bluetooth-ble'&&active()));
   }
   function connect() {
     hardware();
@@ -41,6 +45,7 @@ function createSimulationController(module, options={}) {
   function disconnect() {
     // Model the transport epoch reset, not a direct UI connection flag.
     module._gar_app_transport_reset(1,0);module._gar_app_transport_reset(2,0);
+    module._gar_app_transport_reset(3,0);
     hardware();
   }
   function state(id,name,status,message,actions=[]) {
@@ -91,9 +96,6 @@ function createSimulationController(module, options={}) {
     let remaining=deltaMs;
     do {
     const step=Math.min(remaining,250);remaining-=step;now+=step;
-    if(powerDownAt!==null && powerWasOn && powered && now-powerDownAt>=6000) {
-      module._gar_app_button(67,-1);powered=false;receipts.clear();disconnect();
-    }
     if(active() && now-lastPing>=2000){send({type:'ping'});lastPing=now;}
     module._gar_app_tick(step);outputs();
     for(const receipt of receipts.values()) {

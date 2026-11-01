@@ -11,7 +11,7 @@ std::deque<std::string> outgoing;
 std::string snapshot,result;
 vibe::DeviceApplication::Hardware facts;
 vibe::DeviceApplication app(
-  {gar_application::device,gar_application::firmware,gar_application::bluetooth_name,gar_application::source_prefix},
+  {gar_application::device,gar_application::firmware,gar_application::bluetooth_name,gar_application::source_prefix,"ble-numeric-comparison","BでYESを選び、Aで決定してください。"},
   [](vibe::Transport link,const std::string& data) {
     JsonDocument document;document["transport"]=vibe::name(link);document["data"]=data;
     std::string packet;serializeJson(document,packet);outgoing.push_back(std::move(packet));
@@ -23,14 +23,14 @@ vibe::DeviceApplication app(
 uint32_t clockMs=0;
 ButtonMapping keys([](char key,int phase){app.button(key,phase);});
 vibe::Transport transport(int link) {
-  return link==1?vibe::Transport::usb:link==2?vibe::Transport::spp:vibe::Transport::none;
+  return link==1?vibe::Transport::usb:link==2?vibe::Transport::spp:link==3?vibe::Transport::ble:vibe::Transport::none;
 }
 }
 extern "C" {
 void gar_app_init() {
   app.setInputHints({"B:次 A:決定","B長:一覧","B長:戻る","B:次 A:決定","B短押しで次、Aで決定。"});
   facts.width=gar_board::display::width;facts.height=gar_board::display::height;
-  facts.battery=82;facts.sppReady=true;app.begin(facts);app.step();lv_task_handler();
+  facts.battery=82;facts.sppReady=false;app.begin(facts);app.step();lv_task_handler();
 }
 void gar_app_tick(unsigned elapsed) {
   clockMs+=elapsed;keys.tick(clockMs);lv_tick_inc(elapsed);app.step();lv_task_handler();
@@ -42,6 +42,9 @@ void gar_app_button(int key,int phase) { keys.input(static_cast<char>(key),phase
 void gar_app_hardware(int powered,int battery,int sppReady,int sppClient) {
   facts.powered=powered!=0;facts.battery=battery;facts.sppReady=sppReady!=0;
   facts.sppClient=sppClient!=0;app.hardware(facts);
+}
+void gar_app_ble_hardware(int ready,int client) {
+  facts.bleReady=ready!=0;facts.bleClient=client!=0;app.hardware(facts);
 }
 void gar_app_pairing(unsigned code) { if(code<=999999)app.pairingRequested(code); }
 void gar_app_authenticated(int success) { app.authenticated(success!=0); }

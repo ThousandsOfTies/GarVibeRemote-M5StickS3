@@ -11,9 +11,10 @@ Codexの状態・複数セッション・選択式の質問を、M5Stack StickS3
 - 接続断・再接続、回答エラー、バックグラウンドの質問を試す。
 - `?live=1`は既存のlocalhost:8775フィードを閲覧するモード。ブラウザの回答は実チャットへ送信しません。
 
-**今回の到達点はProduct構成とWebPanelです。BLE無線とWindows GATT中継、
-Codex導入支援の移植は次の段階です。実機用USB/LCDアダプターは初期構成で、
-ビルド・書き込み・実機操作はまだ検証していません。SPP・Wi-Fiは使いません。**
+BLE通信部品、Windows GATT中継、Codex状態・質問連携、導入支援を実装しています。
+**実機のペアリング・無線通信・表示・電源操作は未検証です。**
+PC内の試験と実機での確認は区別してください。SPP・Wi-Fiは使いません。
+実機導入は[Windows導入手順](docs/INSTALL.md)を参照してください。
 
 ## 初めて取得するとき
 
@@ -23,7 +24,7 @@ cd GarVibeRemote-M5StickS3
 python tools/product.py validate
 ```
 
-Python 3.11以降、Node.js 22以降、Gitが必要です。実機を接続する必要はありません。
+Python 3.11以降、Node.js 24以降、Gitが必要です。実機を接続する必要はありません。
 WASMはGitに含めないため、初回にビルドしてください。WindowsではUbuntuのWSLと
 Emscripten 3.1.64を有効にした環境を使用します。
 
@@ -63,7 +64,7 @@ firmware/sticks3/
 simulation/                  WebPanel・C++ホスト入口・模擬PC・HTTP
 scripts/                     再現可能なビルドと開発用起動
 tools/product.py             共通compositionへの入口
-transports/ble/              BLEの実装境界とプロトコル契約
+transports/ble/              BLEのUUID設定とプロトコル契約
 docs/                       構成・実装段階・検証範囲
 tests/                      共通C++アプリを使う回帰確認
 ```

@@ -24,7 +24,7 @@ controls.schema=[
   {id:'start-background',type:'action',label:'別セッションで実行開始'},
   {id:'background',type:'action',label:'別セッションに質問を追加'},
   {id:'transport',type:'select',label:'模擬通信路',value:'usb-serial',options:[
-    {value:'usb-serial',label:'模擬JSONL（USB相当・BLE未実装）'}]},
+    {value:'usb-serial',label:'USB相当のJSONL'},{value:'bluetooth-ble',label:'BLE相当（20バイト分割・無線なし）'}]},
   {id:'connected',type:'checkbox',label:'模擬PCとの接続',value:true},
   {id:'powered',type:'checkbox',label:'本体の電源',value:true},
   {id:'reject',type:'checkbox',label:'回答の受信エラーを試す',value:false},
@@ -76,8 +76,8 @@ async function poll() {
 function startLive() {
   document.querySelector('#scenario-panel').hidden=true;
   document.querySelector('#live-panel').hidden=false;
-  document.querySelector('#mode-label').textContent='Codex 本番データ · PCアプリ';
-  document.querySelector('#intro').textContent='実機と共通のアプリ本体をPCで動かし、本番データを閲覧します。';
+  document.querySelector('#mode-label').textContent='Codex · 閲覧';
+  document.querySelector('#intro').textContent='Codexの状態を表示します。回答は実機から行ってください。';
   document.querySelector('#a-guide').textContent='一覧で決定';
   document.querySelector('#live-status').source=liveConnection;
   document.querySelector('#result-heading').textContent='本番表示';
