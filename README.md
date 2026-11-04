@@ -1,6 +1,12 @@
 # VibeRemote · M5StickS3
 
-Codexの状態・複数セッション・選択式の質問を、M5Stack StickS3で確認するProductです。
+<p align="center">
+  <img src="docs/images/viberemote-cover.png" alt="VibeRemote — M5StickS3を手に持ち、AIの状態確認と質問への回答を行う利用イメージ" width="360">
+  <br><sub>利用イメージ（AI生成）。実機の外観・画面表示とは一部異なります。</sub>
+</p>
+
+PCから離れている間も、M5Stack StickS3でCodexの状態を確認し、選択式の質問に回答するProductです。
+**B短押しで選択、Aで決定、B長押しでセッション一覧**。PCとはBluetooth LEで接続します。
 従来のPlus2版と同じ共通C++アプリを使用し、S3の2ボタンに操作を割り当てます。
 
 ## 現在できること
@@ -12,7 +18,8 @@ Codexの状態・複数セッション・選択式の質問を、M5Stack StickS3
 - `?live=1`は既存のlocalhost:8775フィードを閲覧するモード。ブラウザの回答は実チャットへ送信しません。
 
 BLE通信部品、Windows GATT中継、Codex状態・質問連携、導入支援を実装しています。
-**実機のペアリング・無線通信・表示・電源操作は未検証です。**
+実機への書き込み・画面起動・USB通信・ペアリング・BLE経由の状態通知を確認済みです。
+実機ボタンから本番チャットへの回答と長時間の安定動作は、引き続き確認が必要です。
 PC内の試験と実機での確認は区別してください。SPP・Wi-Fiは使いません。
 実機導入は[Windows導入手順](docs/INSTALL.md)を参照してください。
 

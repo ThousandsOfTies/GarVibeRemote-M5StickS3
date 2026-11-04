@@ -25,3 +25,14 @@ board-m5sticks3、ProductはUUID設定、2ボタンの割当、Codex連携、シ
 実機未確認: 書き込み、起動・電源、LCD方向と色、ペアリング、MTU・通信速度、
 USB/BLEの実送受信・切断復帰、実機回答からの本番チャット操作。
 PC試験は無線の再現でも実ユーザーの承認でもありません。
+
+
+## 2026-11-04 実機導入
+
+- StickS3の8MBフラッシュをローカルへバックアップし、GAR target build/deployで書き込み・ハッシュ照合成功。
+- USBのdeviceInfoでm5sticks3、135×240、BLE初期化成功、表示名M5StickS3を確認。画面起動はユーザー確認済み。
+- BLE接続時に明示的にリンク暗号化を開始し、WindowsではGATTサービスを再取得するよう修正。
+- BLE中継のdevice-readyと、USBから読み取ったsnapshotでactiveTransport=bluetooth-ble、実チャットのrunning状態、2セッション受信を確認。
+- 中継関連Nodeテスト7件、GATT分割のPythonテスト2件成功。
+- 本番チャットへの実機回答、全ボタン・電源操作、長時間・再起動後の安定性は未確認。
+- READMEの表紙はAI生成の利用イメージであり、実機写真ではありません。

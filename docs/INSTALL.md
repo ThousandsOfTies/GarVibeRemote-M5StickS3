@@ -40,7 +40,7 @@ python scripts/setup_remote.py hooks --project D:\YourProject
 
 ## BLE接続
 
-実機の表示名は `VibeRemote-StickS3`。Windowsでペアリングし、両方に表示された番号を確認して、
+実機の表示名は `M5StickS3`。Windowsでペアリングし、両方に表示された番号を確認して、
 S3でB短押し→YES、Aで決定し、Windows側でも確定します。固定PINは使いません。
 
 ```powershell

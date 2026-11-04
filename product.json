@@ -13,7 +13,7 @@
   "application": {
     "device": "m5sticks3",
     "firmware": "gar-sticks3-ble-v1",
-    "bluetooth_name": "VibeRemote-StickS3",
+    "bluetooth_name": "M5StickS3",
     "source_prefix": "m5sticks3",
     "rotation": 0,
     "brightness": 96,
