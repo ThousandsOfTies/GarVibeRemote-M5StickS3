@@ -9,31 +9,128 @@ PCから離れている間も、M5Stack StickS3でCodexの状態を確認し、�
 **B短押しで選択、Aで決定、B長押しでセッション一覧**。PCとはBluetooth LEで接続します。
 従来のPlus2版と同じ共通C++アプリを使用し、S3の2ボタンに操作を割り当てます。
 
-## 現在できること
+## AIに導入を頼む
 
-- WebPanelで実際の共通C++/LVGLアプリをNode + WebAssemblyで実行。
-- 縦135×240、本文の自動スクロール、YES/NO・複数選択肢、最大16セッション。
-- 状態による自動選択、操作中の表示固定、模擬PCへの回答とACK。
-- 接続断・再接続、回答エラー、バックグラウンドの質問を試す。
-- `?live=1`は既存のlocalhost:8775フィードを閲覧するモード。ブラウザの回答は実チャットへ送信しません。
+ローカルのファイルと端末を操作できるAIへ、このREADMEとリポジトリURLを渡し、次のように依頼してください。
 
-BLE通信部品、Windows GATT中継、Codex状態・質問連携、導入支援を実装しています。
-実機への書き込み・画面起動・USB通信・ペアリング・BLE経由の状態通知を確認済みです。
-実機ボタンから本番チャットへの回答と長時間の安定動作は、引き続き確認が必要です。
-PC内の試験と実機での確認は区別してください。SPP・Wi-Fiは使いません。
-実機導入は[Windows導入手順](docs/INSTALL.md)を参照してください。
-
-## 初めて取得するとき
-
-```powershell
-git clone --recurse-submodules https://github.com/ThousandsOfTies/GarVibeRemote-M5StickS3.git
-cd GarVibeRemote-M5StickS3
-python tools/product.py validate
+```text
+https://github.com/ThousandsOfTies/GarVibeRemote-M5StickS3
+を、このWindows PCとM5Stack StickS3（K150）へ導入してください。
+READMEの「導入を担当するAIへ」、AGENTS.md、docs/INSTALL.mdを読んで進めてください。
+シミュレータは省略し、実機への書き込み、BLE接続、Codex状態通知、
+実機で選んだ回答が元のチャットへ戻るところまで確認してください。
+既存ファームウェアはバックアップしてください。
+監視するチャットと範囲は私に確認し、USBポート・BLEアドレスは実際の環境から取得してください。
+USB接続、必要なダウンロードモード操作、ペアリング番号の照合、実機ボタンの操作は私に案内し、
+そのほかの準備・設定・サービス起動は進めてください。
+不足があれば、完了した範囲と残る条件を具体的に報告してください。
 ```
 
-Python 3.11以降、Node.js 24以降、Gitが必要です。実機を接続する必要はありません。
-WASMはGitに含めないため、初回にビルドしてください。WindowsではUbuntuのWSLと
-Emscripten 3.1.64を有効にした環境を使用します。
+通常の実機導入には、**WebPanel、WASM、Emscripten、WSLは不要**です。
+質問連携・セッション監視の起動には、ローカルCodex Appの実行環境が必要です。
+別のAIや通常のPowerShellだけで準備する場合は、最後の監視起動をCodex Appへ引き継いでください。
+
+## 必要なもの
+
+| 項目 | 条件 |
+| --- | --- |
+| 本体 | **M5Stack StickS3（K150）**。StickC Plus2や他のS3ボードにはこの成果物を書き込まない |
+| PC | WindowsとBLE対応Bluetoothアダプター |
+| USB | データ通信対応ケーブル。導入・書き込み時に使用 |
+| ツール | Git、Python 3.11以降、Node.js 24以降とnpm、ビルド依存の取得用インターネット接続 |
+| 監視対象 | ローカルCodex App。質問回答・複数チャット監視にはAppの接続環境が必要 |
+| 書き込み | GARのESP32-S3対応版。導入AIは利用可能なCLI・ターゲット設定を確認する |
+
+PCと本体の無線通信はBLEです。SPPのCOMポートやWi-Fi・社内LAN接続は使いません。
+
+## 導入を担当するAIへ
+
+詳細コマンドは[Windows導入手順](docs/INSTALL.md)、基板仕様は
+[sources/board-m5sticks3](sources/board-m5sticks3)、検証実績は[VALIDATION.md](docs/VALIDATION.md)を参照してください。
+
+1. **取得・環境確認**
+   次を実行し、既存の接続設定・サービス・ポート競合も確認します。
+
+   ```powershell
+   git clone --recurse-submodules https://github.com/ThousandsOfTies/GarVibeRemote-M5StickS3.git
+   cd GarVibeRemote-M5StickS3
+   python tools/product.py validate
+   python scripts/setup_remote.py doctor
+   python scripts/setup_remote.py prepare
+   ```
+
+   既に取得済みなら作業中の変更を保全し、必要なsubmoduleだけを初期化してください。
+   設定ファイルのトークンやAPI接続環境の値をログ・チャット・Gitへ出さないでください。
+
+2. **バックアップ・ビルド・実機へ書き込み**
+   USBポート一覧とチップ識別情報でStickS3を特定します。既存フラッシュを読み取り専用で
+   バックアップし、Git管理外へ保存してから書き込みます。COM番号は固定しないでください。
+   ダウンロードモードが必要なら、USB接続のまま電源ボタンを緑LED点滅まで長押しして離すよう案内します。
+
+   GARへこのProductをローカルworkspaceとして登録し、ESP32/esptoolターゲットと検出したUSBポートを選択します。
+   設定コマンドはそのGAR版の `gar --help`、`gar config --help` で確認してください。
+   以下の `WORKSPACE` は登録したworkspace名に置換します。
+
+   ```powershell
+   gar target build --workspace WORKSPACE
+   gar target deploy --workspace WORKSPACE
+   gar target diag --workspace WORKSPACE --json
+   ```
+
+   Pythonビルド入口は `scripts/product-target-build.py`。ESP32-S3の識別情報を含む
+   書き込み用bundleを生成します。GAR側にはPython hookとS3 flash profileへの対応が必要です。
+   コマンドが非対応なら、Plus2のオフセットや成果物を流用せず、GARの不足を報告・修正してください。
+   書き込み成功と起動成功は別に確認します。起動しなければ電源ボタンを短く1回押すよう案内し、
+   画面とUSBの `deviceInfo`（device=m5sticks3、135×240）を確認してください。
+
+3. **Codex監視設定**
+   対象のチャットID・プロジェクトと、監視範囲を確認して `configure` を実行します。
+   チャットIDは現在のCodex環境から取得し、取得できなければ確認してください。
+   単一チャットは `single`、同じプロジェクトは `project`、全プロジェクトは `local`、
+   指定チャット群は `manual`。無断で範囲を広げないでください。
+   設定は `artifacts/connection/local.json` に保存します。Hook導入は任意で、通常のApp監視の必須条件ではありません。
+
+4. **ペアリングと3サービスの起動**
+   `ble-scan` でアドレスを取得し、Windowsの表示名 **M5StickS3** を確認します。
+   必要な番号照合はユーザーへ案内します（BでYESを選択、Aで決定）。固定PINは使いません。
+   PC状態ブリッジ `bridge`、質問監視 `questions`（複数監視なら `sessions`）、
+   実機中継 `device --transport ble --port <検出したアドレス>` をそれぞれ起動します。
+   既存の正常なサービスは再利用し、重複起動しないでください。
+   `questions` / `sessions` はCodex Appの `CODEX_APP_TOOLS_PIPE_PATH` を引き継ぐ必要があります。
+   Windowsでバックグラウンド起動する場合はウィンドウを非表示にし、個別ログとPIDを保存してください。
+
+5. **導入完了の確認**
+   `doctor` のブリッジ到達・監視準備完了、中継の `device-ready`、実機の状態表示を確認します。
+   B長押しで一覧、B短押しで選択、Aで決定の操作を試し、実際の選択式質問へ本体から回答して
+   元のチャットに一度だけ届くことを確認します。合成した回答をユーザーの回答として送らないでください。
+   BLEの切断・再接続でも最新状態へ戻ることを確認し、未確認項目を残してください。
+
+実機への書き込み・画面起動・USB通信・ペアリング・BLE経由の2セッション状態通知は確認済みです。
+本番チャットへの実機回答と長時間の安定動作は、各環境で確認してください。
+`doctor` の一部表示は静的な実装段階であり、そのPCでの通信成功を保証しません。
+
+## PC再起動後の再接続
+
+ファームウェアの再書き込みやペアリングのやり直しは通常不要です。本体の電源を入れ、
+Codex Appで対象チャットを開き、3サービスを起動し直します。Windows自動起動は設定していません。
+
+このProductには[接続復旧スキル](skills/viberemote-connect/SKILL.md)があります。
+Codexが `~/.agents/skills` を参照する環境では、Productルートから次のように登録できます。
+既存の同名スキルがある場合は上書きせず、リンク先を確認してください。
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE/.agents/skills" | Out-Null
+New-Item -ItemType Junction -Path "$env:USERPROFILE/.agents/skills/viberemote-connect" -Target (Resolve-Path skills/viberemote-connect).Path
+```
+
+登録後、必要ならCodex Appを再起動し、**「VibeRemoteと接続して」** と依頼してください。
+Productフォルダーはリンク先になるため、移動・削除すると登録を直す必要があります。
+スキルが未登録でも、このREADMEを渡して同じ復旧作業を依頼できます。
+
+## 開発者向けWebシミュレータ
+
+実機と共通のC++/LVGLアプリをNode + WebAssemblyで実行します。
+WASMはGitに含めません。WebPanel開発に限り、WindowsではWSLとEmscripten 3.1.64が必要です。
 
 ```powershell
 python scripts/build.py --wsl Ubuntu-26.04
@@ -41,9 +138,14 @@ python scripts/simulate.py --port 8773
 # http://127.0.0.1:8773/
 ```
 
-通常のLinux環境では `python3 scripts/build.py --bootstrap` で固定SDKを準備できます。
+Linuxでは `python3 scripts/build.py --bootstrap` で固定SDKを準備できます。
 WindowsのWSLビルドは `~/.cache/gar-ui/emsdk/emsdk_env.sh` があれば読み込みます。
 停止は起動したターミナルでCtrl+C。HTTPはPC内だけで待ち受けます。
+`?live=1` は別途起動したlocalhost:8775フィードの閲覧専用で、実チャットへ回答しません。
+
+シミュレータは画面、スクロール、複数セッション、選択・ACK等を確認しますが、
+現在は実機のBleUartを迂回し、分割したデータを共通アプリへ渡します。
+無線・暗号化・GATT購読の検証は含まれません。共通実行と代替の範囲を区別してください。
 
 ## 操作
 

@@ -16,9 +16,11 @@ python tools/product.py build
 `prepare`はProduct内の隔離環境へ依存ライブラリを入れ、`build`はビルドだけを行います。
 Windowsの成果物は `%USERPROFILE%/.cache/gar/<Product別ID>/build/sticks3-usb/`、
 Linuxでは `.cache/gar-target-build/<実行環境>/build/sticks3-usb/`。成功時に表示されるパスを使います。
-実機検証前の開発版です。本体とUSBが用意できたら、元のフラッシュのバックアップ、
+実機で書き込み・BLE状態通知まで確認した版です。各環境で元のフラッシュのバックアップ、
 型番・書き込み先の確認、書き込み、表示・電源・2ボタンの検証を行ってください。
 Plus2用のファームウェアは使いません。
+
+書き込みと導入完了の基準は[READMEのAI向け手順](../README.md#導入を担当するaiへ)を参照してください。
 
 ## Codexの設定
 
