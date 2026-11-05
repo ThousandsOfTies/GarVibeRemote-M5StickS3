@@ -6,9 +6,10 @@ const scenarioNames = new Set(['multi','long','short','choices','running','idle'
 const links = {'usb-serial':1,'bluetooth-ble':3};
 
 function createSimulationController(module, options={}) {
-  let now=0, serial=0, lastPing=0, mode='demo', scenarioName='multi', transport='usb-serial';
+  let now=0, serial=0, lastPing=0, mode=options.demo===true?'demo':'live', scenarioName='multi', transport='bluetooth-ble';
   let powered=true, connected=true, reject=false, battery=82, liveConnected=false;
   let result='まだ回答していません';
+  const fragments=new Map();
   const states=new Map(), receipts=new Map(), events=[];
   const metrics={incomingPackets:0,outgoingPackets:0,syntheticReplies:0,acknowledgements:0,droppedReplies:0};
   const read=name=>{const ptr=module[`_gar_app_${name}`]();const value=module.UTF8ToString(ptr);return value?JSON.parse(value):null;};
@@ -22,14 +23,14 @@ function createSimulationController(module, options={}) {
       const chunkSize=link==='bluetooth-ble'?20:encoded.length;
       for(let offset=0;offset<encoded.length;offset+=chunkSize){
         const chunk=encoded.subarray(offset,offset+chunkSize);module.HEAPU8.set(chunk,pointer);
-        module._gar_app_feed_bytes(links[link],pointer,chunk.length);
+        module._gar_app_feed_bytes(links[link],pointer,chunk.length);if(link==='bluetooth-ble')module._gar_app_tick(0);
       }
     } finally {module._free(pointer);}
   }
   function send(packet, link=transport) {
     if(!active())return;
     wire(link,JSON.stringify(packet)+'\n');metrics.incomingPackets++;
-    event(`模擬PC → 本体 / ${link}：${packet.type}`);
+    event(`${mode==='live'?'本番PC':'模擬PC'} → 本体 / ${link}：${packet.type}`);
   }
   function hardware() {
     module._gar_app_hardware(+powered,battery,0,0);
@@ -45,7 +46,7 @@ function createSimulationController(module, options={}) {
   function disconnect() {
     // Model the transport epoch reset, not a direct UI connection flag.
     module._gar_app_transport_reset(1,0);module._gar_app_transport_reset(2,0);
-    module._gar_app_transport_reset(3,0);
+    module._gar_app_ble_hardware(1,0);fragments.clear();
     hardware();
   }
   function state(id,name,status,message,actions=[]) {
@@ -75,7 +76,9 @@ function createSimulationController(module, options={}) {
       const output=read('take_output');if(!output)break;
       if(output.type==='pairing-confirm') {event(`模擬Bluetooth認証：${output.accepted?'YES':'NO'}`);continue;}
       if(typeof output.data!=='string')continue;
-      for(const line of output.data.split('\n').filter(Boolean)) {
+      const buffered=(fragments.get(output.transport)||'')+output.data;
+      const complete=buffered.split('\n');fragments.set(output.transport,complete.pop());
+      for(const line of complete.filter(Boolean)) {
         let message;try{message=JSON.parse(line);}catch{continue;}
         metrics.outgoingPackets++;event(`本体 → 模擬PC / ${output.transport}：${line}`);
         if(message.type!=='uiAction')continue;
@@ -160,6 +163,10 @@ function createSimulationController(module, options={}) {
       const previous=liveConnected;liveConnected=command.connected??liveConnected;
       if(!liveConnected)disconnect();else if(!previous)connect();else send({type:'sessions',sessions:[...states.values()]});
       result=liveConnected?'実機と同じCodexの状態を表示しています。':'PCブリッジとの接続を待っています。';
+    } else if(command.type==='ble-event') {
+      const ids={security:0,connect:1,authenticate:2,subscribe:3,disconnect:4,mtu:5,notifyFailure:6,reset:7};
+      if(!(command.event in ids)||!Number.isInteger(command.value))throw Error('Invalid BLE event');
+      module._gar_app_ble_event(ids[command.event],command.value);
     } else if(command.type==='wire') {
       // Isolated protocol tests use the same byte framing as USB/SPP.
       if(mode!=='demo'||!links[command.transport]||typeof command.data!=='string'||Buffer.byteLength(command.data)>65536)throw Error('Invalid wire input');
@@ -167,9 +174,11 @@ function createSimulationController(module, options={}) {
     } else throw Error('Unknown control');
     module._gar_app_tick(0);outputs();
   }
-  module._gar_lv_init();module._gar_app_init();outputs();hardware();connect();scenario('multi');tick(0);
+  module._gar_lv_init();module._gar_app_init();outputs();hardware();
+  if(mode==='demo'){connect();scenario('multi');}else result='本番データの接続を待っています。';
+  tick(0);
   return {tick,control,
-    snapshot:()=>({snapshot:read('snapshot'),frame:module._gar_lv_frame(),width:module._gar_lv_width(),height:module._gar_lv_height(),
+    snapshot:()=>({snapshot:read('snapshot'),ble:read('ble_snapshot'),frame:module._gar_lv_frame(),width:module._gar_lv_width(),height:module._gar_lv_height(),
       mode,scenario:scenarioName,hardware:{powered,connected,reject,battery,transport},liveConnected,result,events:[...events],metrics:{...metrics},elapsedMs:now}),
     frame:()=>Buffer.from(module.HEAPU8.subarray(module._gar_lv_framebuffer(),module._gar_lv_framebuffer()+module._gar_lv_width()*module._gar_lv_height()*4)),
   };

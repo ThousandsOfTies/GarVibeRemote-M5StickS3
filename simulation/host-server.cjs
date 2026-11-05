@@ -22,7 +22,7 @@ async function createHostServer(options={}) {
   const panelRoot=path.resolve(options.panelRoot??root);
   const componentsRoot=path.resolve(options.componentsRoot??path.join(root,'gar-components'));
   const app=options.module??await loadApplication(options.runtimeRoot??path.join(root,'runtime'));
-  const controller=createSimulationController(app);
+  const controller=createSimulationController(app,{demo:options.demo===true});
   const buildId=options.buildId??process.env.GAR_BUILD_ID??'development';
   const instanceId=options.instanceId??'development';
   if(typeof buildId!=='string'||!buildId||typeof instanceId!=='string'||!instanceId)throw Error('Invalid runtime identity');
@@ -51,13 +51,15 @@ async function createHostServer(options={}) {
         const state=controller.snapshot();
         return json(res,200,{ok:true,buildId,runningBuildId:buildId,instanceId,pid:process.pid,
           runtime:'shared-cpp-wasm-node',mode:state.mode,uptimeMs:Date.now()-started,frame:state.frame,
-          width:state.width,height:state.height,metrics:state.metrics,syntheticRepliesOnly:true});
+          width:state.width,height:state.height,metrics:state.metrics,ble:state.ble,transportImplementation:"shared-BleUart-sdk-substitute",syntheticRepliesOnly:true});
       }
       if(req.method==='GET'&&url.pathname==='/api/state')return json(res,200,controller.snapshot());
       if(req.method==='GET'&&url.pathname==='/api/frame')return respond(res,200,'application/octet-stream',controller.frame());
       if(req.method==='POST'&&url.pathname==='/api/control') {
         if(!originAllowed(req))return json(res,403,{ok:false,error:'Same-origin controls only'});
-        const command=await body(req);controller.control(command);return json(res,200,{ok:true,...controller.snapshot()});
+        const command=await body(req);
+        if(!options.demo&&!['button','live'].includes(command.type))return json(res,403,{ok:false,error:'Test inputs are disabled'});
+        controller.control(command);return json(res,200,{ok:true,...controller.snapshot()});
       }
       if(req.method!=='GET')return json(res,404,{ok:false});
       let filename;
@@ -77,13 +79,27 @@ async function createHostServer(options={}) {
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(requestedPort,host,resolve);});
   port=server.address().port;
+  let feedTimer,feedBusy=false,lastFeed;
+  async function receiveLive(){
+    if(closed||feedBusy)return;feedBusy=true;
+    try {
+      const response=await fetch('http://127.0.0.1:8775/state',{signal:AbortSignal.timeout(2500)});
+      if(!response.ok)throw Error('Live feed unavailable');
+      const data=await response.json();
+      const message={type:'live',connected:data.connected===true,sessions:data.sessions};
+      const serialized=JSON.stringify(message);
+      if(serialized!==lastFeed){controller.control(message);lastFeed=serialized;}
+    }catch{lastFeed=undefined;controller.control({type:'live',connected:false});}
+    finally{feedBusy=false;}
+  }
+  if(!options.demo&&!options.manualClock){receiveLive();feedTimer=setInterval(receiveLive,1000);}
   let last=performance.now();
   const timer=options.manualClock?undefined:setInterval(()=>{
     const current=performance.now(),delta=Math.floor(current-last);
     if(delta>0){last+=delta;controller.tick(Math.min(delta,60000));}
   },10);
   return {port,controller,
-    close:async()=>{if(closed)return;closed=true;clearInterval(timer);server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));},
+    close:async()=>{if(closed)return;closed=true;clearInterval(timer);clearInterval(feedTimer);server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));},
   };
 }
 async function main() {

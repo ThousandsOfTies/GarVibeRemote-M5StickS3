@@ -72,10 +72,10 @@ python scripts/build.py --wsl Ubuntu-26.04
 python scripts/simulate.py --port 8773
 ```
 
-通常は本体と操作案内のみを表示。「開発用の設定」で試験条件・回答結果・ログを開けます。
-BLE相当の試験では20バイトに分割して共通C++アプリへ渡します。無線・GATTの再現ではありません。
-本番の状態を閲覧するときは `python scripts/setup_remote.py simulator-feed` を起動し、
-`http://127.0.0.1:8773/?live=1`を開きます。このモードから実チャットへ回答は送れません。
+通常起動は本番データの閲覧専用で、テスト入力は無効です。「開発用の設定」で接続状態・ログを確認できます。
+BLE試験はNimBLEのホスト代替から実機と同じBleUartを経由して共通C++アプリへ渡します。無線・暗号処理そのものは再現しません。
+本番の状態を閲覧するときは `python scripts/setup_remote.py simulator-feed --panel-port 8774` を起動し、
+`http://127.0.0.1:8774/`を開きます。このモードから実チャットへ回答は送れません。
 
 診断は `doctor`、停止は各ターミナルでCtrl+Cです。doctorは実機接続の成功を保証しません。
 Bluetooth切断後は新規接続と最新一覧の取得を行い、不明な回答を自動で再送しません。

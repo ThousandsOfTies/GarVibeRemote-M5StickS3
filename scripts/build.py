@@ -14,7 +14,7 @@ from composition import product
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPORTS = ['feed_bytes', 'hardware', 'button', 'tick', 'snapshot', 'take_output',
-           'pairing', 'authenticated', 'transport_reset', 'ble_hardware']
+           'pairing', 'authenticated', 'transport_reset', 'ble_hardware', 'ble_event', 'ble_snapshot']
 EMSDK_VERSION = '3.1.64'
 EMSDK_SHA256 = '2a61fc9d271cab441918b9495d1103c56b5062fd46c721e2d988a6dbbdf6cd01'
 
@@ -115,6 +115,10 @@ def main():
     deps = dependencies()
     selected = product()
     generated = selected.prepare()
+    profile = json.loads((ROOT / 'transports/ble/profile.json').read_text())
+    (generated / 'ble_profile.h').write_text('#pragma once\nnamespace ble_profile {\n' +
+        ''.join('inline constexpr char ' + key + '[] = ' + json.dumps(profile[key]) + ';\n'
+                for key in ('service', 'rx', 'tx')) + '}\n')
     application = selected.components['application']
     app = application / 'vibe-remote/compact-ui'
     firmware = ROOT / selected.data['build']['project']
@@ -131,6 +135,8 @@ def main():
     exports = ['receive', 'hardware', 'button', 'refresh', 'snapshot', 'take_action'] if args.ui_only else EXPORTS
     if not args.ui_only:
         command += ['--entry', str(ROOT / 'simulation/host-entry.cpp')]
+        ble_root = selected.components['tools'] / 'transports/ble-uart'
+        command += ['--include', str(ble_root / 'host'), '--include', str(ble_root / 'arduino')]
         for path in selected.data['build']['includes']:
             command += ['--include', str(application / path)]
         for path in selected.data['build']['sources']:
@@ -140,7 +146,7 @@ def main():
     subprocess.run(command, env=env, check=True)
     if not args.ui_only:
         metadata = json.loads((output / 'build.json').read_text(encoding='utf-8'))
-        sources = [ROOT / 'simulation/host-entry.cpp', ROOT / 'product.json',
+        sources = [*sorted((selected.components['tools'] / 'transports/ble-uart').rglob('*.h')), ROOT / 'simulation/host-entry.cpp', ROOT / 'product.json',
                    ROOT / selected.data['hardware']['binding'], selected.profile_path,
                    *sorted(generated.glob('*.h')),
                    *[application / path for path in selected.data['build']['sources']],

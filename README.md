@@ -129,6 +129,10 @@ Productフォルダーはリンク先になるため、移動・削除すると�
 
 ## 開発者向けWebシミュレータ
 
+GAR管理では `gar sim build` → `deploy` → `start` → `diag`（各コマンドに
+`--workspace WORKSPACE`）を使います。起動先は http://127.0.0.1:8774/ です。
+以下は開発用の直接起動です。
+
 実機と共通のC++/LVGLアプリをNode + WebAssemblyで実行します。
 WASMはGitに含めません。WebPanel開発に限り、WindowsではWSLとEmscripten 3.1.64が必要です。
 
@@ -141,11 +145,12 @@ python scripts/simulate.py --port 8773
 Linuxでは `python3 scripts/build.py --bootstrap` で固定SDKを準備できます。
 WindowsのWSLビルドは `~/.cache/gar-ui/emsdk/emsdk_env.sh` があれば読み込みます。
 停止は起動したターミナルでCtrl+C。HTTPはPC内だけで待ち受けます。
-`?live=1` は別途起動したlocalhost:8775フィードの閲覧専用で、実チャットへ回答しません。
+通常起動は本番データの閲覧専用です。別途 `python scripts/setup_remote.py simulator-feed --panel-port 8774` を起動するとlocalhost:8775から受信します。実チャットへ回答しません。
 
 シミュレータは画面、スクロール、複数セッション、選択・ACK等を確認しますが、
-現在は実機のBleUartを迂回し、分割したデータを共通アプリへ渡します。
-無線・暗号化・GATT購読の検証は含まれません。共通実行と代替の範囲を区別してください。
+実機と同じBleUart.hの接続・暗号化要求・購読判定・送受信処理を実行します。
+NimBLE / FreeRTOSの使用APIをホスト代替に置き換え、認証・購読・再接続を制御します。
+実際の暗号処理、無線、WindowsのBLEスタックは再現しません。詳細は[検証経路](docs/SIMULATION_PATH.md)を参照してください。
 
 ## 操作
 

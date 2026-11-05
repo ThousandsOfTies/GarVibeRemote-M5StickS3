@@ -4,7 +4,7 @@ const path=require('node:path');
 const {loadApplication,createHostServer}=require('../simulation/host-server.cjs');
 async function fixture(t){
  const module=await loadApplication(path.join(__dirname,'../simulation/runtime'));
- const server=await createHostServer({module,port:0,manualClock:true});
+ const server=await createHostServer({module,port:0,manualClock:true,demo:true});
  t.after(()=>server.close());return server;
 }
 const edge=(c,button,phase)=>c.control({type:'button',button,phase});
@@ -66,4 +66,12 @@ test('BLE chunks use a distinct application lease and preserve answer identities
  c.control({type:'hardware',connected:false});assert.equal(c.snapshot().snapshot.activeTransport,'none');
  c.control({type:'hardware',connected:true});assert.equal(c.snapshot().snapshot.activeTransport,'bluetooth-ble');
  assert.equal(c.snapshot().metrics.syntheticReplies,1);
+});
+test('normal server starts without synthetic sessions and refuses test inputs',async t=>{
+ const module=await loadApplication(path.join(__dirname,'../simulation/runtime'));
+ const server=await createHostServer({module,port:0,manualClock:true});t.after(()=>server.close());
+ assert.equal(server.controller.snapshot().mode,'live');
+ assert.equal(server.controller.snapshot().snapshot.sessions.some(s=>['screen','notes','release'].includes(s.id)),false);
+ const response=await fetch(`http://127.0.0.1:${server.port}/api/control`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'mode',mode:'demo'})});
+ assert.equal(response.status,403);
 });

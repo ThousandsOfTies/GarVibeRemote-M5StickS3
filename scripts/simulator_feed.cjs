@@ -85,6 +85,11 @@ async function startSimulatorFeed(options) {
     });
   }
   const server = http.createServer((req, res) => {
+    if(req.method==='GET' && req.url==='/state' && /^(127\.0\.0\.1|localhost):\d+$/.test(req.headers.host??'') && (!req.headers.origin||origins.has(req.headers.origin))) {
+      res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
+      res.end(JSON.stringify({connected:connected(),sessions:connected()?latest.sessions:[]}));return;
+    }
+
     const host = req.headers.host ?? '';
     if (
       !/^(127\.0\.0\.1|localhost):\d+$/.test(host) ||
