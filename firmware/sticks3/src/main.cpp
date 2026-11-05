@@ -4,6 +4,7 @@
 #include "DeviceApplication.h"
 #include "application_config.h"
 #include "ButtonMapping.h"
+#include "IdleBacklight.h"
 #include "BleUart.h"
 #include "ble_profile.h"
 
@@ -11,12 +12,15 @@ namespace {
 namespace board = gar::sticks3;
 namespace config = gar_application;
 gar::BleUart ble;
+vibe::IdleBacklight backlight(config::brightness,8);
+uint8_t lastBrightness=config::brightness;
 vibe::Transport transport(board::Link link) {
   return vibe::Transport::usb;
 }
 vibe::DeviceApplication::Hardware facts(const board::Hardware& hardware) {
-  return {hardware.powered,false,false,
+  vibe::DeviceApplication::Hardware value{hardware.powered,false,false,
           hardware.battery,hardware.width,hardware.height,hardware.board};
+  value.charging=hardware.charging;return value;
 }
 vibe::DeviceApplication app(
   {config::device,config::firmware,config::bluetooth_name,config::source_prefix,"ble-numeric-comparison","BでYESを選び、Aで決定してください。"},
@@ -32,7 +36,7 @@ void setup() {
     [](board::Link link,bool discard) {
       if(discard)app.discardTransport(transport(link));else app.resetTransport(transport(link));
     },
-    [](char key,int phase) {keys.input(key,phase,millis());},
+    [](char key,int phase) {if(!backlight.button(key,phase,millis()))keys.input(key,phase,millis());},
     [](const board::Hardware& hardware) {auto value=facts(hardware);value.bleReady=ble.ready();value.bleClient=ble.connected();app.hardware(value);}
   });
   app.setInputHints({"B:次 A:決定","B長:一覧","B長:戻る","B:次 A:決定","B短押しで次、Aで決定。"});
@@ -46,5 +50,8 @@ void setup() {
 }
 void loop() {
   board::poll();auto value=facts(board::hardware());value.bleReady=ble.ready();value.bleClient=ble.connected();
-  app.hardware(value);ble.poll();keys.tick(millis());app.step();lv_task_handler();delay(5);
+  app.hardware(value);ble.poll();keys.tick(millis());app.step();
+  backlight.tick(millis(),app.allSessionsIdle());
+  if(backlight.brightness()!=lastBrightness){lastBrightness=backlight.brightness();board::setBrightness(lastBrightness);}
+  lv_task_handler();delay(5);
 }

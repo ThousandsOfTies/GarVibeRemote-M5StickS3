@@ -7,7 +7,7 @@ const links = {'usb-serial':1,'bluetooth-ble':3};
 
 function createSimulationController(module, options={}) {
   let now=0, serial=0, lastPing=0, mode=options.demo===true?'demo':'live', scenarioName='multi', transport='bluetooth-ble';
-  let powered=true, connected=true, reject=false, battery=82, liveConnected=false;
+  let powered=true, connected=true, reject=false, charging=false, battery=82, liveConnected=false;
   let result='まだ回答していません';
   const fragments=new Map();
   const states=new Map(), receipts=new Map(), events=[];
@@ -33,7 +33,7 @@ function createSimulationController(module, options={}) {
     event(`${mode==='live'?'本番PC':'模擬PC'} → 本体 / ${link}：${packet.type}`);
   }
   function hardware() {
-    module._gar_app_hardware(+powered,battery,0,0);
+    module._gar_app_hardware(+powered,battery,0,0);module._gar_app_charging(+charging);
     module._gar_app_ble_hardware(1,+(transport==='bluetooth-ble'&&active()));
   }
   function connect() {
@@ -132,10 +132,10 @@ function createSimulationController(module, options={}) {
       states.set(id,value);send(value);
     } else if(command.type==='hardware') {
       const wasActive=active(), previous=transport;
-      for(const name of ['powered','connected','reject'])if(command[name]!==undefined&&typeof command[name]!=='boolean')throw Error('Invalid hardware');
+      for(const name of ['powered','connected','reject','charging'])if(command[name]!==undefined&&typeof command[name]!=='boolean')throw Error('Invalid hardware');
       if(command.transport!==undefined&&!links[command.transport])throw Error('Invalid transport');
       if(command.battery!==undefined&&(!Number.isInteger(command.battery)||command.battery<0||command.battery>100))throw Error('Invalid battery');
-      powered=command.powered??powered;connected=command.connected??connected;reject=command.reject??reject;
+      powered=command.powered??powered;connected=command.connected??connected;reject=command.reject??reject;charging=command.charging??charging;
       transport=command.transport??transport;battery=command.battery??battery;
       if(!active() || previous!==transport){receipts.clear();disconnect();}
       if(active() && (!wasActive || previous!==transport))connect();else hardware();
@@ -179,7 +179,7 @@ function createSimulationController(module, options={}) {
   tick(0);
   return {tick,control,
     snapshot:()=>({snapshot:read('snapshot'),ble:read('ble_snapshot'),frame:module._gar_lv_frame(),width:module._gar_lv_width(),height:module._gar_lv_height(),
-      mode,scenario:scenarioName,hardware:{powered,connected,reject,battery,transport},liveConnected,result,events:[...events],metrics:{...metrics},elapsedMs:now}),
+      mode,scenario:scenarioName,hardware:{powered,connected,reject,charging,battery,transport},liveConnected,result,events:[...events],metrics:{...metrics},elapsedMs:now}),
     frame:()=>Buffer.from(module.HEAPU8.subarray(module._gar_lv_framebuffer(),module._gar_lv_framebuffer()+module._gar_lv_width()*module._gar_lv_height()*4)),
   };
 }

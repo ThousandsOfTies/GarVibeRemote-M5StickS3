@@ -5,6 +5,7 @@
 #include "gar_board_config.h"
 #include <deque>
 #include "ButtonMapping.h"
+#include "IdleBacklight.h"
 #include "BleUart.h"
 #include "ble_profile.h"
 
@@ -26,6 +27,7 @@ vibe::DeviceApplication app(
     if(link==vibe::Transport::ble)ble.send(data);else publish(link,data);
   }, [](bool accepted) {ble.confirm(accepted);});
 uint32_t clockMs=0;
+vibe::IdleBacklight backlight(gar_application::brightness,8);
 ButtonMapping keys([](char key,int phase){app.button(key,phase);});
 vibe::Transport transport(int link) {
   return link==1?vibe::Transport::usb:link==2?vibe::Transport::spp:link==3?vibe::Transport::ble:vibe::Transport::none;
@@ -44,17 +46,18 @@ void gar_app_init() {
 }
 void gar_app_tick(unsigned elapsed) {
   clockMs+=elapsed;keys.tick(clockMs);lv_tick_inc(elapsed);
-  pumpBle();facts.bleReady=ble.ready();facts.bleClient=ble.connected();app.hardware(facts);app.step();pumpBle();lv_task_handler();
+  pumpBle();facts.bleReady=ble.ready();facts.bleClient=ble.connected();app.hardware(facts);app.step();backlight.tick(clockMs,app.allSessionsIdle());pumpBle();lv_task_handler();
 }
 void gar_app_feed_bytes(int link,const char* bytes,unsigned size) {
   if(!bytes)return;
   if(link==3){gar::nimble_host::write(bytes,size);pumpBle();}else app.feed(transport(link),bytes,size);
 }
-void gar_app_button(int key,int phase) { keys.input(static_cast<char>(key),phase,clockMs); }
+void gar_app_button(int key,int phase) { if(!backlight.button(static_cast<char>(key),phase,clockMs))keys.input(static_cast<char>(key),phase,clockMs); }
 void gar_app_hardware(int powered,int battery,int sppReady,int sppClient) {
   facts.powered=powered!=0;facts.battery=battery;facts.sppReady=sppReady!=0;
   facts.sppClient=sppClient!=0;app.hardware(facts);
 }
+void gar_app_charging(int charging) {facts.charging=charging!=0;app.hardware(facts);}
 void gar_app_ble_hardware(int ready,int client) {
   if(client){gar::nimble_host::connect();ble.poll();gar::nimble_host::subscribe(true);}else gar::nimble_host::disconnect();
   pumpBle();facts.bleReady=ble.ready();facts.bleClient=ble.connected();app.hardware(facts);
@@ -82,7 +85,7 @@ void gar_app_authenticated(int success) { app.authenticated(success!=0); }
 void gar_app_transport_reset(int link,int mode) {
   if(mode==1)app.discardTransport(transport(link));else app.resetTransport(transport(link));
 }
-const char* gar_app_snapshot() { snapshot=app.snapshot();return snapshot.c_str(); }
+const char* gar_app_snapshot() { JsonDocument d;deserializeJson(d,app.snapshot());d["brightness"]=backlight.brightness();d["dimmed"]=backlight.dimmed();snapshot.clear();serializeJson(d,snapshot);return snapshot.c_str(); }
 const char* gar_app_take_output() {
   pumpBle();
   result.clear();if(!outgoing.empty()) { result=std::move(outgoing.front());outgoing.pop_front(); }

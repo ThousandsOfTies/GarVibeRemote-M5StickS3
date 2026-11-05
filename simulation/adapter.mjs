@@ -19,6 +19,7 @@ async function request(url,command) {
 }
 function show(state) {
   lastState=state;
+  screen.style.filter=`brightness(${(state.snapshot.brightness??96)/96})`;
   if(device.powered!==state.hardware.powered)device.powered=state.hardware.powered;
   controls.values={...state.hardware,scenario:state.scenario};
   debug.textContent=JSON.stringify({application:state.snapshot,ble:state.ble,transport:state.hardware.transport,metrics:state.metrics,elapsedMs:state.elapsedMs},null,2);
