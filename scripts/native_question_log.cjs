@@ -70,15 +70,15 @@ class NativeQuestionLog {
           !q.title.trim() ||
           q.title.length > 2000 ||
           /[\x00-\x08\x0b-\x1f\x7f]/.test(q.title) ||
-          !Array.isArray(q.options) ||
-          q.options.length < 2 ||
-          q.options.length > 8 ||
-          q.options.some((o) => typeof o !== 'string' || !o.trim() || /[\p{Cc}]/u.test(o))
+          (q.options != null && (!Array.isArray(q.options) ||
+          q.options.length < 2 || q.options.length > 8 ||
+          q.options.some((o) => typeof o !== 'string' || !o.trim() || /[\p{Cc}]/u.test(o))))
         )
           continue;
         const id = JSON.stringify(['request_user_input_async', p.call_id, index]);
         // Full choices remain readable in the scrolling body even when a button label is ellipsized.
-        const message =
+        const freeText = q.options == null;
+        const message = freeText ? q.title + '\n\nA長押しで音声回答\n携帯・PCでも回答できます' :
           q.title + '\n\n選択肢\n' + q.options.map((label, i) => `${i + 1}. ${label}`).join('\n');
         // CompactUi uses signed LVGL coordinates. Pathological line breaks must
         // not cause one card to reject the entire multi-session snapshot.
@@ -87,8 +87,9 @@ class NativeQuestionLog {
           id,
           question: message,
           originalQuestion: q.title,
-          originalOptions: [...q.options],
-          options: q.options.map((label, i) => ({
+          originalOptions: freeText ? undefined : [...q.options],
+          freeText,
+          options: (q.options ?? []).map((label, i) => ({
             id: `option-${i}`,
             label: displayLabel(`${i + 1}. ${label}`)
           }))
@@ -126,7 +127,14 @@ class NativeQuestionLog {
       /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>$/.exec(
         text
       );
-    if (!match) return;
+    if (!match) {
+      // An ordinary user response supersedes optional free-text questions.
+      // Environment/ambient context records are not user answers.
+      if (text && !text.startsWith('<environment_context>') && !text.startsWith('<in-app-browser-context'))
+        for (const call of this.calls.values()) if (call.accepted)
+          for (const q of call.questions) if (q.freeText) this.answered.add(q.id);
+      return;
+    }
     try {
       const data = JSON.parse(match[1]);
       for (const item of Array.isArray(data) ? data : [data]) {

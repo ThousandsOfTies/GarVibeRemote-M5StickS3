@@ -27,6 +27,7 @@ vibe::DeviceApplication app(
     if(link==vibe::Transport::ble)ble.send(data);else publish(link,data);
   }, [](bool accepted) {ble.confirm(accepted);});
 uint32_t clockMs=0;
+int16_t audioBuffer[160000];bool micActive=false;
 vibe::IdleBacklight backlight(gar_application::brightness,8);
 ButtonMapping keys([](char key,int phase){app.button(key,phase);});
 vibe::Transport transport(int link) {
@@ -38,6 +39,7 @@ void gar_app_init() {
   app.setInputHints({"B:次 A:決定","B長:一覧","B長:戻る","B:次 A:決定","B短押しで次、Aで決定。"});
   facts.width=gar_board::display::width;facts.height=gar_board::display::height;
   facts.battery=82;facts.sppReady=false;app.begin(facts);
+  app.enableVoice(audioBuffer,160000,[](bool enabled){micActive=enabled;return true;});
   ble.begin({gar_application::bluetooth_name,ble_profile::service,ble_profile::rx,ble_profile::tx},{
     [](const char* bytes,size_t size){app.feed(vibe::Transport::ble,bytes,size);},
     []{app.resetTransport(vibe::Transport::ble);},
@@ -58,6 +60,7 @@ void gar_app_hardware(int powered,int battery,int sppReady,int sppClient) {
   facts.sppClient=sppClient!=0;app.hardware(facts);
 }
 void gar_app_charging(int charging) {facts.charging=charging!=0;app.hardware(facts);}
+void gar_app_audio(const int16_t* data,unsigned samples) {if(micActive && data && samples<=160000)app.voiceAudio(data,samples);}
 void gar_app_ble_hardware(int ready,int client) {
   if(client){gar::nimble_host::connect();ble.poll();gar::nimble_host::subscribe(true);}else gar::nimble_host::disconnect();
   pumpBle();facts.bleReady=ble.ready();facts.bleClient=ble.connected();app.hardware(facts);

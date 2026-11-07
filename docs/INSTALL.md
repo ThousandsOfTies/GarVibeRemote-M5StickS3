@@ -63,19 +63,23 @@ python scripts/setup_remote.py device --transport ble --port AA:BB:CC:DD:EE:FF
 `--port`は既存CLIとの互換名で、BLE時はBluetoothアドレスです。BLEはCOMポートを使いません。
 USBの切り分け時だけ `device --transport usb --port COM番号` を使用します。
 質問連携は対象チャットを開いたCodex Appの実行環境が必要です。
-自由記述やツールの実行承認は実機へ転送しません。
+自由記述も入力待ちとして転送します。音声回答は[音声入力の準備](VOICE_INPUT.md)が必要です。
+ツールの実行承認・秘密入力・複数選択は音声回答の対象外です。
 
 ## WebPanelと診断
 
 ```powershell
-python scripts/build.py --wsl Ubuntu-26.04
-python scripts/simulate.py --port 8773
+gar sim build --workspace Local/GarVibeRemote-M5StickS3
+gar sim deploy --workspace Local/GarVibeRemote-M5StickS3
+gar sim start --workspace Local/GarVibeRemote-M5StickS3
+gar sim diag --workspace Local/GarVibeRemote-M5StickS3 --json
 ```
 
-通常起動は本番データの閲覧専用で、テスト入力は無効です。「開発用の設定」で接続状態・ログを確認できます。
-BLE試験はNimBLEのホスト代替から実機と同じBleUartを経由して共通C++アプリへ渡します。無線・暗号処理そのものは再現しません。
-本番の状態を閲覧するときは `python scripts/setup_remote.py simulator-feed --panel-port 8774` を起動し、
-`http://127.0.0.1:8774/`を開きます。このモードから実チャットへ回答は送れません。
+通常起動は実機と同じPC中継へ接続し、本番の質問へ選択・音声回答できます。
+`chatQuestionSources` に `m5sticks3-sim-ble` を含め、既存のbridge/sessionsを起動しておきます。
+GARのsim build/deploy/start後、http://127.0.0.1:8774/ を開きます。閲覧用のsimulator-feedは不要です。
+ブラウザで「マイクを準備」を押すとPCマイクで自由入力に回答できます。
+BLEはNimBLEのホスト代替から実機と同じBleUartを通します。無線・暗号処理そのものは再現しません。
 
 診断は `doctor`、停止は各ターミナルでCtrl+Cです。doctorは実機接続の成功を保証しません。
 Bluetooth切断後は新規接続と最新一覧の取得を行い、不明な回答を自動で再送しません。

@@ -7,6 +7,8 @@
 
 PCから離れている間も、M5Stack StickS3でCodexの状態を確認し、選択式の質問に回答するProductです。
 **B短押しで選択、Aで決定、B長押しでセッション一覧**。PCとはBluetooth LEで接続します。
+自由入力の質問では**A長押しで録音し、離して文字認識、A短押しで確認送信**できます。
+PCでの初回準備と操作は[音声回答](docs/VOICE_INPUT.md)を参照してください。APIキーは不要です。
 従来のPlus2版と同じ共通C++アプリを使用し、S3の2ボタンに操作を割り当てます。
 
 ## AIに導入を頼む
@@ -137,15 +139,17 @@ GAR管理では `gar sim build` → `deploy` → `start` → `diag`（各コマ�
 WASMはGitに含めません。WebPanel開発に限り、WindowsではWSLとEmscripten 3.1.64が必要です。
 
 ```powershell
-python scripts/build.py --wsl Ubuntu-26.04
-python scripts/simulate.py --port 8773
-# http://127.0.0.1:8773/
+gar sim build --workspace Local/GarVibeRemote-M5StickS3
+gar sim deploy --workspace Local/GarVibeRemote-M5StickS3
+gar sim start --workspace Local/GarVibeRemote-M5StickS3
+gar sim diag --workspace Local/GarVibeRemote-M5StickS3 --json
+# http://127.0.0.1:8774/
 ```
 
 Linuxでは `python3 scripts/build.py --bootstrap` で固定SDKを準備できます。
 WindowsのWSLビルドは `~/.cache/gar-ui/emsdk/emsdk_env.sh` があれば読み込みます。
-停止は起動したターミナルでCtrl+C。HTTPはPC内だけで待ち受けます。
-通常起動は本番データの閲覧専用です。別途 `python scripts/setup_remote.py simulator-feed --panel-port 8774` を起動するとlocalhost:8775から受信します。実チャットへ回答しません。
+停止は `gar sim stop --workspace Local/GarVibeRemote-M5StickS3`。HTTPはPC内だけで待ち受けます。
+通常起動は実機と同じPC中継に接続し、本番の質問へ選択・音声回答できます。8775の閲覧用フィードは不要です。音声回答は「マイクを準備」でPCマイクの権限を与えてから操作します。実機と同時接続しても回答は一度だけ元のチャットへ戻ります。
 
 シミュレータは画面、スクロール、複数セッション、選択・ACK等を確認しますが、
 実機と同じBleUart.hの接続・暗号化要求・購読判定・送受信処理を実行します。

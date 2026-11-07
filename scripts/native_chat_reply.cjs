@@ -27,16 +27,17 @@ function questionReply(question, choiceId) {
     id[2] >= 24 ||
     JSON.stringify(id) !== question.id ||
     typeof question.originalQuestion !== 'string' ||
-    !question.originalQuestion.trim() ||
-    !Array.isArray(question.originalOptions) ||
-    question.originalOptions.length < 2 ||
-    question.originalOptions.length > 8 ||
-    question.originalOptions.some((o) => typeof o !== 'string' || !o.trim()) ||
-    typeof choiceId !== 'string' ||
-    !/^option-[0-7]$/.test(choiceId)
+    !question.originalQuestion.trim()
   )
     throw Error('Invalid native chat reply');
-  const option = question.originalOptions[Number(choiceId.slice(7))];
+  if (question.freeText === true) {
+    if (question.originalOptions != null) throw Error('Invalid native chat reply');
+  } else if (!Array.isArray(question.originalOptions) || question.originalOptions.length < 2 ||
+    question.originalOptions.length > 8 || question.originalOptions.some(o=>typeof o!=='string'||!o.trim()) ||
+    typeof choiceId!=='string' || !/^option-[0-7]$/.test(choiceId)) throw Error('Invalid native chat reply');
+  const option = question.freeText ? choiceId : question.originalOptions[Number(choiceId.slice(7))];
+  if (question.freeText && (typeof option !== 'string' || !option.trim() || Buffer.byteLength(option) > 2000 || /[\p{Cc}]/u.test(option)))
+    throw Error('Invalid voice answer');
   if (option === undefined) throw Error('Invalid native chat reply');
   return (
     '<send_user_message_question_reply>\n' +
@@ -82,13 +83,15 @@ function assertQuestion(state, sessionId, question) {
     throw Error('The question chat is not ready for a reply');
   const [, callId, index] = JSON.parse(question.id);
   const item = turn.items.find((i) => i.type === 'agentMessage' && i.id === callId);
+  const questionIndex = turn.items.indexOf(item);
   const q = item?.questions?.[index];
   if (
     !q ||
     q.title !== question.originalQuestion ||
     q.isSecret === true ||
     q.multiSelect === true ||
-    JSON.stringify(q.options) !== JSON.stringify(question.originalOptions)
+    (question.freeText ? q.options != null || question.originalOptions != null :
+      JSON.stringify(q.options) !== JSON.stringify(question.originalOptions))
   )
     throw Error('The original question is no longer current');
   for (const item of turn.items) {
@@ -108,7 +111,12 @@ function assertQuestion(state, sessionId, question) {
       /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>$/.exec(
         text
       );
-    if (!match) continue;
+    if (!match) {
+      if (question.freeText && turn.items.indexOf(item) > questionIndex && text &&
+          !text.startsWith('<environment_context>') && !text.startsWith('<in-app-browser-context'))
+        throw Error('The original question was superseded by a user response');
+      continue;
+    }
     let answers;
     try {
       answers = JSON.parse(match[1]);
@@ -422,4 +430,4 @@ class NativeChatReply {
   }
 }
 
-module.exports = { NativeChatReply, questionReply, assertQuestion };
+module.exports = { NativeChatReply, questionReply, assertQuestion, NativePeer, latestTurn };

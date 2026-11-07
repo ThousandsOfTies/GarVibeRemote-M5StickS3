@@ -1,23 +1,32 @@
 import '/gar-components/m5sticks3.mjs';
+import '/gar-components/microphone-input.mjs';
 import '/gar-components/controls.mjs';
 import '/gar-components/event-log.mjs';
 import '/gar-components/connection-status.mjs';
-import { JsonTransport } from '/gar-components/json-transport.mjs';
 
-// The browser only displays the PC application's framebuffer and sends test I/O.
+// The browser displays target pixels and supplies physical button/mic input.
 // UI, protocol, lease and button logic run together in the Node-hosted C++ app.
 const device=document.querySelector('#device'),controls=document.querySelector('#scenarios');
 const log=document.querySelector('#log'),answer=document.querySelector('#answer'),debug=document.querySelector('#snapshot');
 const screen=document.querySelector('#screen'),context=screen.getContext('2d');
-const params=new URLSearchParams(location.search);
 const liveConnection=new EventTarget();liveConnection.connected=false;
-let frame=-1,eventSequence=0,stopped=false,timer,liveTransport,lastState,queue=Promise.resolve();
+let frame=-1,eventSequence=0,stopped=false,timer,lastState,queue=Promise.resolve();
 async function request(url,command) {
   const response=await fetch(url,command?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(command)}:{cache:'no-store'});
   if(!response.ok)throw Error(`PCシミュレータへの接続に失敗しました (${response.status})`);
   return response.json();
 }
 function show(state) {
+  document.querySelector('#microphone').active=(state.production || state.mode==='demo') && state.snapshot.voiceState==='recording';
+  if(state.mode==='demo'){
+    document.querySelector('#scenario-panel').hidden=false;
+    document.querySelector('#live-panel').hidden=true;
+    document.querySelector('#intro').textContent='開発用の試験入力です。本番のチャットへ回答しません。';
+    document.querySelector('#answer-note').textContent='試験入力だけを受け取ります。音声認識結果も本番へ送信しません。';
+    document.querySelector('#result-heading').textContent='試験回答の受信結果';
+    document.querySelector('#mode-label').textContent='開発試験 · 本番へ送信しません';
+    document.querySelector('#a-guide').textContent='決定 / 長押しで録音';
+  }
   lastState=state;
   screen.style.filter=`brightness(${(state.snapshot.brightness??96)/96})`;
   if(device.powered!==state.hardware.powered)device.powered=state.hardware.powered;
@@ -39,6 +48,10 @@ function control(command) {
   });
   return queue;
 }
+document.querySelector('#microphone').addEventListener('gar-microphone-pcm',e=>{
+  if((lastState?.production || lastState?.mode==='demo') && lastState.snapshot.voiceState==='recording')control({type:'audio',samples:e.detail.samples});
+});
+document.querySelector('#voice-test').onclick=()=>control({type:'scenario',name:'text'});
 async function poll() {
   try {
     const state=await request('/api/state');
@@ -60,16 +73,15 @@ async function poll() {
 function startLive() {
   document.querySelector('#scenario-panel').hidden=true;
   document.querySelector('#live-panel').hidden=false;
-  document.querySelector('#mode-label').textContent='Codex · 閲覧';
-  document.querySelector('#intro').textContent='Codexの状態を表示します。回答は実機から行ってください。';
-  document.querySelector('#a-guide').textContent='一覧で決定';
+  document.querySelector('#mode-label').textContent='Codex · 本番接続';
+  document.querySelector('#intro').textContent='実機と同じ本番の質問を受け、元のチャットへ回答します。';
+  document.querySelector('#a-guide').textContent='決定 / 長押しで録音';
   document.querySelector('#live-status').source=liveConnection;
-  document.querySelector('#result-heading').textContent='本番表示';
-  document.querySelector('.result .section-label').textContent='STATUS';
-  document.querySelector('#answer-note').textContent='B長押しでセッション一覧を確認できます。YES／NOの回答は実機から行ってください。';
+  document.querySelector('#result-heading').textContent='本番の回答結果';
+  document.querySelector('#answer-note').textContent='実機と同じ経路で元のチャットへ回答します。実機から先に回答した質問は送信できません。';
 
 }
 device.addEventListener('gar-button',({detail})=>control({type:'button',button:detail.button,phase:detail.phase}));
-window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);liveTransport?.close();},{once:true});
+window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);document.querySelector('#microphone').close();},{once:true});
 window.vibeSimulator=Object.freeze({snapshot:()=>structuredClone(lastState?.snapshot)});
 startLive();poll();

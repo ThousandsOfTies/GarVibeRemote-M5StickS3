@@ -14,7 +14,7 @@ from composition import product
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPORTS = ['feed_bytes', 'hardware', 'button', 'tick', 'snapshot', 'take_output',
-           'pairing', 'authenticated', 'transport_reset', 'ble_hardware', 'ble_event', 'ble_snapshot', 'charging']
+           'pairing', 'authenticated', 'transport_reset', 'ble_hardware', 'ble_event', 'ble_snapshot', 'charging', 'audio']
 EMSDK_VERSION = '3.1.64'
 EMSDK_SHA256 = '2a61fc9d271cab441918b9495d1103c56b5062fd46c721e2d988a6dbbdf6cd01'
 

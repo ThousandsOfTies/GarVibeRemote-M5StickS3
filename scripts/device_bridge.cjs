@@ -3,9 +3,13 @@
 // Tokens stay on the PC. It owns no HTTP server, hooks, build or pairing UI.
 const { readPcConfig } = require('./pc_config.cjs');
 const { JsonLines, compactState, validActionIdentity } = require('./device_protocol.cjs');
+const { VoiceReceiver } = require('./voice_receiver.cjs');
 
 function startDeviceBridge(options) {
-  const { SerialPort, WebSocket, port, token } = options;
+  const { SerialPort, port, token } = options;
+  const WebSocket=options.WebSocket??require('ws').WebSocket;
+  const source=options.source??`m5sticks3-${options.transport}`;
+  if(!['m5sticks3-ble','m5sticks3-usb','m5sticks3-sim-ble'].includes(source))throw Error('Invalid device source');
   const transport = options.transport === 'ble' ? 'bluetooth-ble' : 'usb-serial';
   const log = options.onEvent ?? (() => {}),
     now = options.now ?? Date.now;
@@ -30,6 +34,8 @@ function startDeviceBridge(options) {
     stateQueued;
   const flushWaiters = new Set();
   const answered = new Map();
+  const voice = new VoiceReceiver({send, current:id=>deviceReady && authenticated && now()-lastState<6000 ? latest?.sessions.find(s=>s.session.id===id):undefined,
+    transcribe:options.transcribe??require('./speech_recognizer.cjs').transcribe, confirm:m=>deviceMessage(m,true),now,onEvent:log});
   const event = (name, extra = {}) => log({ event: name, transport, ...extra });
   const key = (m) => JSON.stringify([m.sessionId, m.uiId, m.actionId]);
   const receipt = (m, ok) => ({
@@ -77,6 +83,7 @@ function startDeviceBridge(options) {
     pending = undefined;
   }
   function offline() {
+    voice.clear();
     stateQueued = undefined;
     queue = [];
     rejectPending();
@@ -86,8 +93,9 @@ function startDeviceBridge(options) {
     latest = undefined;
     answered.clear();
   }
-  function deviceMessage(message) {
+  function deviceMessage(message,confirmedVoice=false) {
     if (!message || typeof message !== 'object') return;
+    if(voice.receive(message))return;
     if (message.type === 'deviceInfo') {
       if (
         message.device !== 'm5sticks3' ||
@@ -118,6 +126,7 @@ function startDeviceBridge(options) {
     } else if (message.type === 'busy') {
       event('device-busy', { activeTransport: message.activeTransport });
     } else if (message.type === 'uiAction') {
+      if(message.actionId==='voice' && !confirmedVoice){event('answer-rejected');return;}
       if (!validActionIdentity(message)) {
         event('answer-rejected');
         return;
@@ -135,7 +144,7 @@ function startDeviceBridge(options) {
         upstream?.readyState === WebSocket.OPEN &&
         session?.ui?.id === message.uiId &&
         session.ui.state === 'waiting' &&
-        session.ui.actions.some((a) => a.id === message.actionId) &&
+        (message.actionId==='voice' ? session.ui.freeText===true && typeof message.text==='string' && Buffer.byteLength(message.text)<=2000 : message.text===undefined && session.ui.actions.some((a) => a.id === message.actionId)) &&
         !pending &&
         now() - lastState < 6000;
       if (!valid) {
@@ -148,7 +157,8 @@ function startDeviceBridge(options) {
         JSON.stringify({
           type: 'uiAction',
           ...pending,
-          source: `m5sticks3-${options.transport}`,
+          ...(message.actionId==='voice'?{text:message.text}:{}),
+          source,
           token
         })
       );
@@ -211,6 +221,7 @@ function startDeviceBridge(options) {
         const next = { type: 'sessions', sessions };
         if (Buffer.byteLength(JSON.stringify(next)) > 65536) throw Error('size');
         latest = next;
+        voice.update();
         lastState = now();
         helloAt = now();
         if (deviceReady) send(latest);
@@ -363,4 +374,4 @@ if (require.main === module)
     console.error('接続中継を起動できません。設定とポートを確認してください（秘密の値は非表示）。');
     process.exitCode = 1;
   });
-module.exports = { JsonLines, compactState, startDeviceBridge };
+module.exports = { JsonLines, compactState, startDeviceBridge, readPcConfig };

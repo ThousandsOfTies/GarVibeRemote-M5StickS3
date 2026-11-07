@@ -5,6 +5,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {createSimulationController}=require('./host-controller.cjs');
+const {startDeviceBridge,readPcConfig}=require('./device_bridge.cjs');
 
 const mime={'.html':'text/html; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
 function argument(args,name,fallback) {
@@ -22,7 +23,8 @@ async function createHostServer(options={}) {
   const panelRoot=path.resolve(options.panelRoot??root);
   const componentsRoot=path.resolve(options.componentsRoot??path.join(root,'gar-components'));
   const app=options.module??await loadApplication(options.runtimeRoot??path.join(root,'runtime'));
-  const controller=createSimulationController(app,{demo:options.demo===true});
+  if(options.demo && options.connection)throw Error('Production and synthetic peers cannot be combined');
+  const controller=createSimulationController(app,{demo:options.demo===true,transcribe:options.transcribe,externalPeer:!!options.connection});
   const buildId=options.buildId??process.env.GAR_BUILD_ID??'development';
   const instanceId=options.instanceId??'development';
   if(typeof buildId!=='string'||!buildId||typeof instanceId!=='string'||!instanceId)throw Error('Invalid runtime identity');
@@ -51,14 +53,15 @@ async function createHostServer(options={}) {
         const state=controller.snapshot();
         return json(res,200,{ok:true,buildId,runningBuildId:buildId,instanceId,pid:process.pid,
           runtime:'shared-cpp-wasm-node',mode:state.mode,uptimeMs:Date.now()-started,frame:state.frame,
-          width:state.width,height:state.height,metrics:state.metrics,ble:state.ble,transportImplementation:"shared-BleUart-sdk-substitute",syntheticRepliesOnly:true});
+          width:state.width,height:state.height,metrics:state.metrics,ble:state.ble,transportImplementation:"shared-BleUart-sdk-substitute",productionQuestionPath:!!options.connection,syntheticRepliesOnly:!options.connection});
       }
       if(req.method==='GET'&&url.pathname==='/api/state')return json(res,200,controller.snapshot());
       if(req.method==='GET'&&url.pathname==='/api/frame')return respond(res,200,'application/octet-stream',controller.frame());
       if(req.method==='POST'&&url.pathname==='/api/control') {
         if(!originAllowed(req))return json(res,403,{ok:false,error:'Same-origin controls only'});
         const command=await body(req);
-        if(!options.demo&&!['button','live'].includes(command.type))return json(res,403,{ok:false,error:'Test inputs are disabled'});
+        const allowed=options.connection?['button','audio']:['button','live'];
+        if(!options.demo&&!allowed.includes(command.type))return json(res,403,{ok:false,error:'Test inputs are disabled'});
         controller.control(command);return json(res,200,{ok:true,...controller.snapshot()});
       }
       if(req.method!=='GET')return json(res,404,{ok:false});
@@ -79,34 +82,30 @@ async function createHostServer(options={}) {
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(requestedPort,host,resolve);});
   port=server.address().port;
-  let feedTimer,feedBusy=false,lastFeed;
-  async function receiveLive(){
-    if(closed||feedBusy)return;feedBusy=true;
-    try {
-      const response=await fetch('http://127.0.0.1:8775/state',{signal:AbortSignal.timeout(2500)});
-      if(!response.ok)throw Error('Live feed unavailable');
-      const data=await response.json();
-      const message={type:'live',connected:data.connected===true,sessions:data.sessions};
-      const serialized=JSON.stringify(message);
-      if(serialized!==lastFeed){controller.control(message);lastFeed=serialized;}
-    }catch{lastFeed=undefined;controller.control({type:'live',connected:false});}
-    finally{feedBusy=false;}
-  }
-  if(!options.demo&&!options.manualClock){receiveLive();feedTimer=setInterval(receiveLive,1000);}
+  const relay=options.connection?startDeviceBridge({...options.connection,
+    SerialPort:controller.SerialPort,transport:'ble',port:'sdk-peripheral',source:'m5sticks3-sim-ble',
+    transcribe:options.transcribe,onEvent:e=>{controller.relayEvent(e);options.onEvent?.(e);}}):undefined;
   let last=performance.now();
   const timer=options.manualClock?undefined:setInterval(()=>{
     const current=performance.now(),delta=Math.floor(current-last);
     if(delta>0){last+=delta;controller.tick(Math.min(delta,60000));}
   },10);
   return {port,controller,
-    close:async()=>{if(closed)return;closed=true;clearInterval(timer);clearInterval(feedTimer);server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));},
+    close:async()=>{if(closed)return;closed=true;await relay?.close();clearInterval(timer);server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));},
   };
 }
 async function main() {
   const args=process.argv.slice(2),root=path.resolve(argument(args,'--root',__dirname));
   const bundled=path.join(root,'gar-components');
   const componentsRoot=argument(args,'--components',await fs.access(bundled).then(()=>bundled,()=>path.join(root,'../sources/gar-tools/web-simulator/components')));
+  const productRoot=path.resolve(argument(args,'--product-root',process.env.VIBEREMOTE_PRODUCT_ROOT||path.join(__dirname,'..')));
+  process.env.VIBEREMOTE_PRODUCT_ROOT=productRoot;
+  const demo=args.includes('--voice-test');
+  const config=demo?undefined:readPcConfig(path.join(productRoot,'artifacts/connection/local.json'));
+  if(config && !config.chatQuestionSources?.includes('m5sticks3-sim-ble'))throw Error('Enable m5sticks3-sim-ble in the Product chatQuestionSources configuration');
   const running=await createHostServer({root,componentsRoot,
+    demo,connection:config?{url:`ws://127.0.0.1:${config.port}`,token:config.token}:undefined,
+    transcribe:require(require('node:fs').existsSync(path.join(root,'speech_recognizer.cjs'))?path.join(root,'speech_recognizer.cjs'):path.join(root,'../scripts/speech_recognizer.cjs')).transcribe,
     host:argument(args,'--host','127.0.0.1'),port:Number(argument(args,'--port','8773')),
     buildId:argument(args,'--build-id',process.env.GAR_BUILD_ID??'development'),
     instanceId:argument(args,'--instance-id','development')});

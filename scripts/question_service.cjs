@@ -53,7 +53,7 @@ async function startChatQuestions({
         kind: 'chat-choice',
         sessionId: config.sessionId,
         owner,
-        questions: questions.map(({ id, question, options }) => {
+        questions: questions.map(({ id, question, options, freeText }) => {
           const withContext = displayContext
             ? `プロジェクト：${displayContext}\n${question}`
             : question;
@@ -63,7 +63,7 @@ async function startChatQuestions({
               withContext.length <= 2000 && withContext.split('\n').length <= 200
                 ? withContext
                 : question,
-            options
+            options, freeText: freeText === true
           };
         }),
         delivered: [...delivered],
@@ -95,22 +95,22 @@ async function startChatQuestions({
       if (
         !q ||
         sent.has(q.id) ||
-        !/^m5sticks3-(usb|ble)$/.test(answer.source ?? '') ||
-        !q.options.some((o) => o.id === answer.choiceId)
+        !/^m5sticks3-(usb|ble|sim-ble)$/.test(answer.source ?? '') ||
+        !(q.freeText ? answer.choiceId === 'voice' && typeof answer.text === 'string' && answer.text.trim() && Buffer.byteLength(answer.text) <= 2000 : q.options.some((o) => o.id === answer.choiceId))
       )
         continue;
       // Persist before dispatch. A timeout or crash never automatically replays a human answer.
       sent.set(q.id, 'unconfirmed');
       save();
       try {
-        await client.reply(q, answer.choiceId);
+        await client.reply(q, q.freeText ? answer.text : answer.choiceId);
         sent.set(q.id, 'delivered');
         delivered.add(q.id);
         save();
         onEvent({ event: 'chat-answer-delivered', source: answer.source });
-      } catch {
+      } catch (error) {
         failed.add(q.id);
-        onEvent({ event: 'chat-answer-unconfirmed', source: answer.source });
+        onEvent({ event: 'chat-answer-unconfirmed', source: answer.source, reason: error.message });
       }
     }
     const ids = new Set(model.pending().map((q) => q.id));

@@ -1,11 +1,17 @@
-// Product scenarios are a synthetic PC peer, never a native-chat reply service.
+// Production attaches the same PC relay through the SDK byte endpoint.
+// Explicit isolated tests can attach their synthetic peer instead.
 const longQuestion = '画面の変更とテストが完了しました。修正した内容を確認してから、次の作業へ進めてもよいですか？本文はゆっくり自動スクロールします。読み終えたらB短押しでYESまたはNOにフォーカスを合わせ、Aで決定してください。ほかのセッションを確認するときはB長押しで一覧を開き、B短押しで順番に選び、Aで切り替えます。今回は接続試験なので、PCのファイルや設定は変更しません。';
 const yesNo = [{id:'yes',label:'YES'}, {id:'no',label:'NO'}];
 const choices = [{id:'continue',label:'続ける'}, {id:'revise',label:'修正する'}, {id:'stop',label:'中止する'}];
-const scenarioNames = new Set(['multi','long','short','choices','running','idle','done','failed']);
+const scenarioNames = new Set(['multi','long','short','choices','running','idle','done','failed','text']);
 const links = {'usb-serial':1,'bluetooth-ble':3};
+const {VoiceReceiver}=require('./voice_receiver.cjs');
+const {createSdkBytePort}=require('./sdk-byte-port.cjs');
 
 function createSimulationController(module, options={}) {
+  const externalPeer=options.demo!==true;
+  if(options.demo && options.externalPeer)throw Error('Cannot attach two PC peers');
+  let peerData,upstreamConnected=false;
   let now=0, serial=0, lastPing=0, mode=options.demo===true?'demo':'live', scenarioName='multi', transport='bluetooth-ble';
   let powered=true, connected=true, reject=false, charging=false, battery=82, liveConnected=false;
   let result='まだ回答していません';
@@ -15,6 +21,15 @@ function createSimulationController(module, options={}) {
   const read=name=>{const ptr=module[`_gar_app_${name}`]();const value=module.UTF8ToString(ptr);return value?JSON.parse(value):null;};
   const event=text=>{events.push({sequence:(events.at(-1)?.sequence??0)+1,text});if(events.length>60)events.shift();};
   const active=()=>powered && connected && (mode==='demo' || liveConnected);
+  const voice=new VoiceReceiver({send:p=>send(p),current:id=>{
+      const s=read('snapshot');return mode==='demo'&&active()&&s.sessionId===id?{ui:{id:s.uiId,state:s.state,freeText:s.freeText}}:undefined;
+    },
+    transcribe:options.transcribe??(async()=>{throw Error('No simulated speech provider');}),
+    confirm:m=>{
+      // Isolated simulator confirmation; never enters Codex or production transport.
+      result=`音声回答：${m.text}`;metrics.syntheticReplies++;
+      send({type:'ack',...m,type:'ack',ok:true});
+    },now:()=>now});
   function wire(link, bytes) {
     const encoded=Buffer.from(bytes,'utf8');
     const pointer=module._malloc(Math.max(1,encoded.length));
@@ -68,6 +83,7 @@ function createSimulationController(module, options={}) {
       state('notes','調査メモ','running','通信方式について調査しています。資料を確認し、結果をまとめています。'),
       state('release','公開の確認','waiting','確認用の成果物を公開してもよいですか？この質問も模擬試験です。',yesNo),
     ]:[state('screen','画面の改善',waiting?'waiting':name,messages[name],waiting?(name==='choices'?choices:yesNo):[])];
+    if(name==='text'){examples.splice(0,examples.length,{session:{id:'speech-test',name:'音声回答の試験'},ui:{id:`text-${++serial}`,state:'waiting',freeText:true,message:'ケースの幅・奥行・高さを教えてください。A長押しで録音します。',actions:[]}});}
     for(const value of examples)states.set(value.session.id,value);
     send({type:'sessions',sessions:examples});result='まだ回答していません';
   }
@@ -76,13 +92,15 @@ function createSimulationController(module, options={}) {
       const output=read('take_output');if(!output)break;
       if(output.type==='pairing-confirm') {event(`模擬Bluetooth認証：${output.accepted?'YES':'NO'}`);continue;}
       if(typeof output.data!=='string')continue;
+      if(externalPeer){if(output.transport==='bluetooth-ble'){metrics.outgoingPackets++;peerData?.(Buffer.from(output.data));}continue;}
       const buffered=(fragments.get(output.transport)||'')+output.data;
       const complete=buffered.split('\n');fragments.set(output.transport,complete.pop());
       for(const line of complete.filter(Boolean)) {
         let message;try{message=JSON.parse(line);}catch{continue;}
-        metrics.outgoingPackets++;event(`本体 → 模擬PC / ${output.transport}：${line}`);
+        metrics.outgoingPackets++;event(`本体 → 模擬PC / ${output.transport}：${message.type.startsWith('voice')?message.type:line}`);
+        if(mode==='demo' && voice.receive(message))continue;
         if(message.type!=='uiAction')continue;
-        // Even live display input has no native-chat delivery path.
+        // Only the explicit isolated peer below fabricates test receipts.
         if(mode!=='demo' || !active() || output.transport!==transport){metrics.droppedReplies++;continue;}
         const source=states.get(message.sessionId), action=source?.ui.actions.find(a=>a.id===message.actionId);
         if(!source || source.ui.id!==message.uiId || !action){metrics.droppedReplies++;continue;}
@@ -99,7 +117,7 @@ function createSimulationController(module, options={}) {
     let remaining=deltaMs;
     do {
     const step=Math.min(remaining,250);remaining-=step;now+=step;
-    if(active() && now-lastPing>=2000){send({type:'ping'});lastPing=now;}
+    if(!externalPeer && active() && now-lastPing>=2000){send({type:'ping'});lastPing=now;}
     module._gar_app_tick(step);outputs();
     for(const receipt of receipts.values()) {
       if(receipt.due>now || !active())continue;
@@ -114,16 +132,18 @@ function createSimulationController(module, options={}) {
   }
   function control(command) {
     if(!command || typeof command!=='object' || Array.isArray(command))throw Error('Invalid control');
+    if(externalPeer && !['button','audio'].includes(command.type))throw Error('Production input comes from the PC relay');
     if(command.type==='button') {
       if(!['A','B'].includes(command.button)||!['down','up','cancel'].includes(command.phase))throw Error('Invalid button');
-      const before=read('snapshot');
-      if(mode==='live' && command.button==='A' && !before.listOpen) {
-        module._gar_app_button(65,-1);result='この画面は閲覧用です。回答は実機から行ってください。';
-      } else module._gar_app_button(command.button.charCodeAt(0),command.phase==='down'?1:command.phase==='up'?0:-1);
+      module._gar_app_button(command.button.charCodeAt(0),command.phase==='down'?1:command.phase==='up'?0:-1);
+    } else if(command.type==='audio') {
+      if((mode!=='demo'&&!externalPeer)||!Array.isArray(command.samples)||command.samples.length>4096||command.samples.some(x=>!Number.isInteger(x)||x < -32768||x>32767))throw Error('Invalid PCM');
+      const pcm=new Int16Array(command.samples),ptr=module._malloc(pcm.byteLength);
+      try{module.HEAPU8.set(new Uint8Array(pcm.buffer),ptr);module._gar_app_audio(ptr,pcm.length);}finally{module._free(ptr);}
     } else if(command.type==='scenario') {
-      if(mode!=='demo')throw Error('Live display is read-only');scenario(command.name);
+      if(mode!=='demo')throw Error('Test scenarios require an isolated peer');scenario(command.name);
     } else if(command.type==='background') {
-      if(mode!=='demo')throw Error('Live display is read-only');
+      if(mode!=='demo')throw Error('Test scenarios require an isolated peer');
       const selected=read('snapshot').sessionId;
       const id=[...states.keys()].find(id=>id!==selected)||'background';
       const status=command.status==='running'?'running':'waiting';
@@ -139,30 +159,6 @@ function createSimulationController(module, options={}) {
       transport=command.transport??transport;battery=command.battery??battery;
       if(!active() || previous!==transport){receipts.clear();disconnect();}
       if(active() && (!wasActive || previous!==transport))connect();else hardware();
-    } else if(command.type==='mode') {
-      if(!['demo','live'].includes(command.mode))throw Error('Invalid mode');
-      if(mode!==command.mode) {
-        receipts.clear();states.clear();disconnect();mode=command.mode;liveConnected=false;
-        if(mode==='demo'){connect();scenario(scenarioName);}else{hardware();result='本番データの接続を待っています。';}
-      }
-    } else if(command.type==='live') {
-      if(mode!=='live')throw Error('Not in live mode');
-      if(command.connected!==undefined&&typeof command.connected!=='boolean')throw Error('Invalid live state');
-      if(command.sessions!==undefined) {
-        if(!Array.isArray(command.sessions)||command.sessions.length>16)throw Error('Invalid live sessions');
-        const packet={type:'sessions',sessions:command.sessions};
-        if(Buffer.byteLength(JSON.stringify(packet))>65536)throw Error('Live packet too large');
-        const next=new Map();
-        for(const value of command.sessions) {
-          const id=value?.session?.id;
-          if(typeof id!=='string'||!id||next.has(id))throw Error('Invalid live session');
-          next.set(id,value);
-        }
-        states.clear();for(const [id,value] of next)states.set(id,value);
-      }
-      const previous=liveConnected;liveConnected=command.connected??liveConnected;
-      if(!liveConnected)disconnect();else if(!previous)connect();else send({type:'sessions',sessions:[...states.values()]});
-      result=liveConnected?'実機と同じCodexの状態を表示しています。':'PCブリッジとの接続を待っています。';
     } else if(command.type==='ble-event') {
       const ids={security:0,connect:1,authenticate:2,subscribe:3,disconnect:4,mtu:5,notifyFailure:6,reset:7};
       if(!(command.event in ids)||!Number.isInteger(command.value))throw Error('Invalid BLE event');
@@ -177,9 +173,18 @@ function createSimulationController(module, options={}) {
   module._gar_lv_init();module._gar_app_init();outputs();hardware();
   if(mode==='demo'){connect();scenario('multi');}else result='本番データの接続を待っています。';
   tick(0);
-  return {tick,control,
+  const SerialPort=externalPeer?createSdkBytePort({
+    subscribe:callback=>{peerData=callback;return ()=>{peerData=undefined;};},
+    connect:()=>{liveConnected=true;hardware();outputs();},
+    disconnect:()=>{liveConnected=false;upstreamConnected=false;disconnect();outputs();},
+    write:bytes=>{if(!active())throw Error('SDK link disconnected');wire('bluetooth-ble',bytes);metrics.incomingPackets++;outputs();}
+  }):undefined;
+  return {tick,control,SerialPort,
+    relayEvent:e=>{event(e.event);if(e.event==='upstream-connected')upstreamConnected=true;if(e.event==='upstream-disconnected')upstreamConnected=false;
+      if(e.event==='answer-accepted')result='PCが回答を受信しました。元のチャットで配信結果を確認できます。';
+      if(e.event==='answer-rejected')result='回答は受理されませんでした。元のチャットで確認してください。';},
     snapshot:()=>({snapshot:read('snapshot'),ble:read('ble_snapshot'),frame:module._gar_lv_frame(),width:module._gar_lv_width(),height:module._gar_lv_height(),
-      mode,scenario:scenarioName,hardware:{powered,connected,reject,charging,battery,transport},liveConnected,result,events:[...events],metrics:{...metrics},elapsedMs:now}),
+      mode,production:externalPeer,scenario:scenarioName,hardware:{powered,connected,reject,charging,battery,transport},liveConnected:externalPeer?upstreamConnected:liveConnected,result,events:[...events],metrics:{...metrics},elapsedMs:now}),
     frame:()=>Buffer.from(module.HEAPU8.subarray(module._gar_lv_framebuffer(),module._gar_lv_framebuffer()+module._gar_lv_width()*module._gar_lv_height()*4)),
   };
 }

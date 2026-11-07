@@ -71,6 +71,7 @@ function compactState(value, fallback = {}) {
       ui: {
         id: ui.id,
         state: ui.state ?? 'waiting',
+        ...(ui.freeText === true && !needsHold && ui.source === 'chat-choice' ? {freeText:true} : {}),
         message: needsHold ? 'PCで承認してください。' : (ui.message ?? ''),
         actions: needsHold
           ? []

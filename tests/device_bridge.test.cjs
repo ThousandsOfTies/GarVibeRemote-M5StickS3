@@ -54,6 +54,27 @@ test('normalization preserves IDs and refuses invalid or unsupported confirmatio
   const huge=state();huge.ui.message='文'.repeat(3000);assert.throws(()=>compactState(huge));
 });
 
+test('physical relay reassembles PCM and submits only its reviewed transcript after explicit confirmation',async t=>{
+ const backend=await startCodexBridge({port:0,token,sessionId:'s1',chatQuestions:true,chatQuestionSources:['m5sticks3-ble']});t.after(()=>backend.close());
+ const request=async()=>{
+   const r=await fetch(`http://127.0.0.1:${backend.port}/chat-questions`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({kind:'chat-choice',sessionId:'s1',owner:'voice-test-owner-1234',questions:[{id:'original-question',question:'寸法は？',options:[],freeText:true}],delivered:[],failed:[]})});return r.json();
+ };
+ await request();
+ const {Port,ports}=fakePorts();let recognized=0;
+ const relay=startDeviceBridge({SerialPort:Port,WebSocket,url:backend.url,token,port:'FAKE',transport:'ble',transcribe:async pcm=>{recognized++;assert.equal(pcm.length,8192);return '縦横10cm、高さ4cm';}});t.after(()=>relay.close());
+ const device=await until(()=>ports[0]?.messages.find(m=>m.sessions?.[0]?.ui?.freeText)&&ports[0]);
+ const ui=device.messages.find(m=>m.sessions?.[0]?.ui?.freeText).sessions[0].ui;
+ device.inject({type:'uiAction',sessionId:'s1',uiId:ui.id,actionId:'voice',text:'未確認の内容'});await pause(20);assert.equal((await request()).answers.length,0);
+ device.inject({type:'voiceStart',id:'capture',sessionId:'s1',uiId:ui.id});
+ for(let i=0;i<16;i++)device.inject({type:'voiceChunk',id:'capture',seq:i,data:Buffer.alloc(512,1).toString('base64')});
+ device.inject({type:'voiceEnd',id:'capture',chunks:16});await until(()=>device.messages.some(m=>m.type==='voiceResult'));assert.equal(recognized,1);
+ assert.equal((await request()).answers.length,0);
+ device.inject({type:'voiceConfirm',id:'capture'});
+ await until(()=>device.messages.some(m=>m.type==='ack'&&m.actionId==='voice'&&m.ok));
+ const a=(await request()).answers[0];assert.equal(a.id,'original-question');assert.equal(a.text,'縦横10cm、高さ4cm');
+ device.inject({type:'voiceConfirm',id:'capture'});await pause(20);assert.equal(recognized,1);
+});
+
 test('real Codex bridge delivers a question and receives exactly one correlated device answer',async()=>{
   const backend=await startCodexBridge({port:0,token,sessionId:'s1',label:'接続試験'});
   const {Port,ports}=fakePorts(),events=[];let clockOffset=0;

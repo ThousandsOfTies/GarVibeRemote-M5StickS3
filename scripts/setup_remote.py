@@ -27,7 +27,7 @@ def source_hash():
     digest=hashlib.sha256()
     files=[APP/'src'/name for name in ('codexBridge.ts','codexInteraction.ts','codexChatQuestions.ts','codexSessions.ts','codexStatus.ts','protocol.ts')]
     files+=[ROOT/'config/connection-node/package-lock.json', ROOT/'transports/ble/profile.json']
-    files+=[ROOT/'scripts'/name for name in ('device_bridge.cjs','device_protocol.cjs','simulator_feed.cjs','pc_config.cjs','ble_port.cjs')]
+    files+=[ROOT/'scripts'/name for name in ('device_bridge.cjs','device_protocol.cjs','simulator_feed.cjs','pc_config.cjs','ble_port.cjs','voice_receiver.cjs','speech_recognizer.cjs','ima_adpcm.cjs')]
     for path in files:digest.update(path.name.encode());digest.update(path.read_bytes())
     return digest.hexdigest()
 
@@ -134,6 +134,9 @@ def doctor(path):
             'deviceFirmware':'ble-usb-source','deviceTransport':'not-checked',
             'deviceTransports':['usb-serial','bluetooth-ble'],'bleTransport':'implemented-not-hardware-verified','simulator':'local-mock',
             'deviceInput':'not-checked'}
+    report['voice']={'provider':'local-faster-whisper','model':'base','language':'ja',
+                     'prepared':(ROOT/'.gar/speech-model/model.bin').is_file() and
+                       (ROOT/'.gar/speech-python'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')).is_file()}
     if not path.exists():report['config']='missing'
     else:
         try:
@@ -147,7 +150,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,default=CONFIG)
     commands=parser.add_subparsers(dest='command',required=True)
-    for name in ('doctor','ports','prepare','bridge','test','questions','sessions'):commands.add_parser(name)
+    for name in ('doctor','ports','prepare','bridge','test','questions','sessions','voice-prepare'):commands.add_parser(name)
     sub=commands.add_parser('simulator-feed');sub.add_argument('--port',type=int,default=8775);sub.add_argument('--panel-port',type=int,default=8773)
     sub=commands.add_parser('device');sub.add_argument('--port',required=True);sub.add_argument('--transport',required=True,choices=['usb','ble'])
     for name in ('configure','setup'):
@@ -166,6 +169,13 @@ def main(argv=None):
         elif args.command=='ports':
             ports,note=serial_ports();print(json.dumps({'ports':ports,'note':note},ensure_ascii=False,indent=2))
         elif args.command=='prepare':prepare_dependencies();print('PCブリッジの実行環境を準備しました。')
+        elif args.command=='voice-prepare':
+            import venv
+            folder=ROOT/'.gar/speech-python'
+            python=folder/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
+            if not python.exists():venv.EnvBuilder(with_pip=True).create(folder)
+            run([python,'-m','pip','install','--disable-pip-version-check','faster-whisper==1.2.1'])
+            run([python,ROOT/'scripts/speech_recognizer.py','prepare'])
         elif args.command=='ble-scan':
             python=ROOT/'.gar/ble-python'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
             profile=json.loads((ROOT/'transports/ble/profile.json').read_text())

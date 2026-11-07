@@ -1,5 +1,37 @@
 # 検証記録
 
+## 2026-11-07 シミュレータの本番質問・回答経路
+
+- embedded-development SKILLへ、実装前の実機/シミュレータ経路照合、既存制約の見直し、元の接続先への応答と未検証範囲の確認を必須チェックとして追加。junction元のSKILLを修正し、quick_validate成功。
+- 通常のパネルを、実機と同じstartDeviceBridge・VoiceReceiver・PCブリッジ・question_service・NativeChatReplyへ接続。readonlyフィード経由とAボタン回答禁止を撤去。
+- 差し替えはNimBLE/FreeRTOS使用APIとバイトポート、Web AudioによるPCM取得。C++アプリ・ボタン割当・IMA圧縮・BleUartの制御・PC音声認識・返信処理は同じ実装。詳細はSIMULATION_PATH.md。
+- Product Nodeテスト41件成功。選択/音声回答を共有中継からnativeカードへ届ける結合試験、片方が回答した後の他方の二重送信拒否、PCブリッジ再起動時の古い押下の破棄と再接続を含む。
+- 共通SDK byte portのバイナリ透過・独立した2端点・所有権解放を単体試験1件で確認。マイク部品とS3筐体は既存の共通Web Componentsを再利用。
+- Edgeの偽マイクを使うブラウザ試験で、通常の本番接続用構成からPCM→共通C++→中継→確認→隔離nativeカードの往復を検証。ここでの質問/認識結果はfixtureであり、本番の証明とは分ける。
+- 本番の質問に人がWebPanelから選択回答し、chat-answer-delivered(source=m5sticks3-sim-ble)と元のチャットの返信を照合。
+- 続いて人がPCマイクで回答し、「コーヒーを飲みたいです」が元の本番質問への返信として到着。パネル側のvoice-audio-received/voice-transcribed/voice-confirmed/answer-acceptedと、監視側のchat-answer-delivered(source=m5sticks3-sim-ble)を確認。
+- 初回の音声試験はマイク準備部品が見つからずエラー。部品を本体の上へ移動。マイク許可失敗の表示が次の画面更新で消える問題も修正。
+- マイク許可を初回だけ拒否するブラウザ試験で、定期画面更新後もエラーが残り、再試行後にPCM入力と返信が回復することを確認。
+- 最終artifactは20261107T014331387845Z-7ef7a9c0。GAR sim build/deploy/start/diagを実施し、running/deployed/expectedのbuild ID一致、本番質問経路有効、SDK側の認証・購読完了を確認。
+- 実機の再書き込みは行っていない。PC代替では実際のI2S/codec/DMA、電波、暗号演算、無線タイミングを検証していない。
+
+## 2026-11-07 自由入力と音声回答
+
+- Product Nodeテスト37件、共有AppのTypeScript型チェックとテスト40件、GATT Pythonテスト2件成功。共通マイクworklet試験1件成功。
+- 自由入力の検出、PCの通常文による回答の優先、native IPCでの元カードへの回答を隔離試験で検証。
+- 共通C++ VoiceInputで700ms境界、録音、他セッション到着中の固定、認識結果確認、明示送信、質問変更・切断での中止を検証。
+- PC中継のPCM組み立て、受信連番、320KB上限、ASR中の取り消し、直接の未確認テキスト拒否、再送しない動作を検証。
+- ローカルWhisper base/int8/CPUで日本語合成音声を認識し、「縦と横は10cm、高さは4cmです。」と取得。実機マイクによる認識精度の証明ではない。
+- Edgeの偽マイク機能を用い、独立した2つのgar-microphone-inputと、ProductのA長押し→PCM取得→認識結果表示→A短押し確認をブラウザで検証。ブラウザ試験の認識結果は模擬値で、本番へ送信しない。
+- GAR target build/deploy最終版: 20261106T231737302641Z-aa937499。COM4のESP32-S3-PICO-1、MAC 7c:e8:b1:e5:32:10に書き込み、各フラッシュハッシュ検証成功。
+- 実機snapshotでvoiceState=idle、activeTransport=bluetooth-ble、bleClient=trueと自由入力質問のwaiting/freeText=trueを取得。
+- GAR sim build最終版: 20261106T231951835879Z-a4ac2c3a。通常の本番表示用として再配置・起動し、sim diagでbuild ID一致・本番フィード受信を確認。
+- 初回の実機試験では無圧縮の転送時間が長く、進捗表示もなかった。IMA ADPCM圧縮と転送％を追加。デコーダーはPython audioopの独立した参照値と照合。
+- 別の実機試験では、音声認識とPCブリッジ受信まで成功したがnative返信がunconfirmed。読み取り専用のCodex native snapshotで、自由入力のoptionsがnullであることを確認。元ログの未指定と厳密比較していたため一致確認で拒否されていた。自由入力に限りnull/未指定を同一扱いにし、同じnullを用いるnative IPC回帰試験を追加。
+- 最終試験で実機マイクの69,632 byteのPCMを圧縮転送し、Whisperが8文字を認識。本人がAで確認し、「縦横10cmです」が元の質問への回答としてこのチャットへ到着した。
+- PCログのvoice-confirmed、answer-accepted、chat-answer-delivered(source=m5sticks3-ble)を照合し、実機snapshotでBLE接続維持・voiceState=idleへの復帰を確認。過去の未確認回答は自動再送していない。
+- 転送は録音終了から十数秒程度かかった。録音環境別の認識精度、長時間運用、通信品質の異なる環境は未検証。
+
 2026-11-01
 
 - 共通C++アプリからNode/WASMをビルド成功。

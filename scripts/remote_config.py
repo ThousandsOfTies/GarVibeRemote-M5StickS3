@@ -84,7 +84,7 @@ def configure(path: Path, *, project: Path, session=None, label=None, port=None,
               'label':label if label is not None else previous.get('label','M5StickS3'),
               'freshnessMs':previous.get('freshnessMs',90000), 'watchInput':False,
               'chatQuestions':chat_questions if chat_questions is not None else previous.get('chatQuestions',False)}
-    config['chatQuestionSources']=['m5sticks3-ble','m5sticks3-usb']
+    config['chatQuestionSources']=['m5sticks3-ble','m5sticks3-usb','m5sticks3-sim-ble']
     config['sessionScope']=session_scope if session_scope is not None else previous.get('sessionScope','single')
     if session_ids is not None:config['sessionIds']=session_ids
     for key in ('sppPort','sppBaudRate','firmware','firmwarePath','deviceTransport'):

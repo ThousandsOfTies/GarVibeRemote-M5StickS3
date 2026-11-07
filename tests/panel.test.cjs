@@ -40,12 +40,14 @@ test('scroll advances, disconnect releases app and reconnect restores sessions',
  assert.throws(()=>edge(c,'C','down'),/Invalid button/);
  assert.throws(()=>c.control({type:'hardware',transport:'bluetooth-spp'}),/Invalid transport/);
 });
-test('live mode cannot submit native or synthetic answers',async t=>{
- const {controller:c}=await fixture(t);c.control({type:'mode',mode:'live'});
- c.control({type:'live',connected:true,sessions:[{type:'state',session:{id:'external',name:'Live'},agent:{status:'waiting'},ui:{id:'q1',state:'waiting',message:'Proceed?',actions:[{id:'yes',label:'YES'}]}}]});
- press(c,'A');c.tick(1000);assert.equal(c.snapshot().metrics.syntheticReplies,0);
- assert.match(c.snapshot().result,/閲覧用/);
+test('production controller starts disconnected and refuses direct state/demo injection',async()=>{
+ const {createSimulationController}=require('../simulation/host-controller.cjs');
+ const c=createSimulationController(await loadApplication(path.join(__dirname,'../simulation/runtime')));
+ assert.equal(c.snapshot().production,true);assert.equal(c.snapshot().snapshot.connected,false);
+ assert.throws(()=>c.control({type:'live',connected:true,sessions:[]}),/PC relay/);
+ assert.throws(()=>c.control({type:'mode',mode:'demo'}),/PC relay/);
 });
+
 test('HTTP serves device component, protects origin and denies private paths',async t=>{
  const {port}=await fixture(t);const base=`http://127.0.0.1:${port}`;
  // Runtime HTTP tests use the explicit component root, as does the developer CLI.

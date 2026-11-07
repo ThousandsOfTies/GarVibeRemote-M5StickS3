@@ -37,10 +37,12 @@ void setup() {
       if(discard)app.discardTransport(transport(link));else app.resetTransport(transport(link));
     },
     [](char key,int phase) {if(!backlight.button(key,phase,millis()))keys.input(key,phase,millis());},
-    [](const board::Hardware& hardware) {auto value=facts(hardware);value.bleReady=ble.ready();value.bleClient=ble.connected();app.hardware(value);}
+    [](const board::Hardware& hardware) {auto value=facts(hardware);value.bleReady=ble.ready();value.bleClient=ble.connected();app.hardware(value);},
+    [](const int16_t* data,size_t count){app.voiceAudio(data,count);}
   });
   app.setInputHints({"B:次 A:決定","B長:一覧","B長:戻る","B:次 A:決定","B短押しで次、Aで決定。"});
   app.begin(facts(board::hardware()));
+  app.enableVoice(board::audioBuffer(160000),160000,[](bool enabled){return board::microphone(enabled);});
   ble.begin({config::bluetooth_name,ble_profile::service,ble_profile::rx,ble_profile::tx},{
     [](const char* bytes,size_t size){app.feed(vibe::Transport::ble,bytes,size);},
     []{app.resetTransport(vibe::Transport::ble);},

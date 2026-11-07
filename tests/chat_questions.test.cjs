@@ -40,9 +40,9 @@ async function fixture(t, now) {
   ws.send(JSON.stringify({ type: 'hello', token }));
   await until(() => messages.find(m => m.type === 'state'));
   const state = () => [...messages].reverse().find(m => m.type === 'state');
-  const choose = async (uiId, actionId, source = 'm5sticks3-ble') => {
+  const choose = async (uiId, actionId, source = 'm5sticks3-ble', text) => {
     const start = messages.length;
-    ws.send(JSON.stringify({ type: 'uiAction', token, uiId, actionId, source }));
+    ws.send(JSON.stringify({ type: 'uiAction', token, uiId, actionId, source, ...(text===undefined?{}:{text}) }));
     return until(() => messages.slice(start).find(m => m.type === 'ack'));
   };
   return { bridge, post, state, choose };
@@ -57,7 +57,9 @@ test('native log matches call/index, multiple questions, PC replies, acceptance 
     { title: '第三問', options: ['丙', '丁', '戊'] }
   ]);
   m.consume(data[0]); assert.equal(m.pending().length, 0);
-  m.consume(data[1]); assert.equal(m.pending().length, 2);
+  m.consume(data[1]); assert.equal(m.pending().length, 3);
+  assert.equal(m.pending()[1].freeText,true);
+  m.consume(reply(m.pending()[1].id)); assert.equal(m.pending().length,2);
   assert.equal(m.pending()[1].id, '["request_user_input_async","call_multi",2]');
   m.consume(reply(m.pending()[0].id)); assert.equal(m.pending().length, 1);
   m.consume(data[0]); assert.equal(m.pending().length, 1); // duplicated log records cannot reopen it
@@ -200,4 +202,26 @@ test('a PC answer recorded before dispatch prevents a queued device reply', asyn
   fs.appendFileSync(file, JSON.stringify(reply('["request_user_input_async","call_question",0]')) + '\n');
   await choosing;
   await pause(220); assert.equal(sent, 0);
+});
+
+test('free-text question becomes waiting without choices and confirmed transcript closes its native card exactly once',async t=>{
+  const {NativeChatReply}=require('../scripts/native_chat_reply.cjs');
+  const {fixture:nativeFixture,state}=require('./helpers/native_reply_fixture.cjs');
+  const dir=temp(t),file=path.join(dir,'rollout.jsonl');
+  fs.writeFileSync(file,records('call_size',[{title:'ケースの寸法は？'}]).map(JSON.stringify).join('\n')+'\n');
+  const q={id:'["request_user_input_async","call_size",0]',originalQuestion:'ケースの寸法は？',freeText:true};
+  const native=await nativeFixture(t,{getState:id=>{const s=state(id,q);s.turns[0].items[0].questions[0].options=null;return s;}});
+  const replies=new NativeChatReply(native);t.after(()=>replies.close());
+  const f=await fixture(t);
+  const app={ready:async()=>{},close(){},reply:async(question,text)=>{
+    await replies.reply(question,text,sessionId);fs.appendFileSync(file,JSON.stringify(reply(question.id))+'\n');
+  }};
+  const service=await startChatQuestions({config:{token,sessionId,port:f.bridge.port,chatQuestions:true},file,app,intervalMs:20});t.after(()=>service.close());
+  await until(()=>f.state().ui?.freeText===true);
+  const ui=f.state().ui;assert.equal(ui.state,'waiting');assert.deepEqual(ui.actions,[]);
+  assert.equal((await f.choose(ui.id,'voice','m5sticks3-ble','')).ok,false);
+  assert.equal((await f.choose(ui.id,'voice','m5sticks3-ble','縦横10cm、高さ4cmです')).ok,true);
+  await until(()=>native.mutations.length===1);
+  const text=native.mutations[0].params.input[0].text;assert.match(text,/高さ4cm/);assert.match(text,/call_size/);
+  assert.equal((await f.choose(ui.id,'voice','m5sticks3-ble','もう一度')).ok,false);
 });
